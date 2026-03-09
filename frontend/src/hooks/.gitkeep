@@ -1,0 +1,7 @@
+/**
+ * Custom hooks directory.
+ * Example hooks to be added here:
+ *   - useRequests.js  → fetch/manage assistance requests
+ *   - useGeolocation.js → browser GPS for volunteer matching
+ *   - useSocket.js      → real-time chat (future)
+ */

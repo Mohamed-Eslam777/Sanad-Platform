@@ -1,0 +1,359 @@
+/*
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * SANAD — Global Stylesheet
+ * Tailwind CSS v4 — single import. Theme tokens extended via tailwind.config.js.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+@import "tailwindcss";
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   1. CSS CUSTOM PROPERTIES — Brand Design Tokens
+   ═══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Brand Colors ── */
+  --color-royal: #2563EB;
+  --color-royal-light: #60A5FA;
+  --color-royal-dark: #1D4ED8;
+  --color-royal-glow: rgba(37, 99, 235, 0.35);
+  --color-navy: #0A0F1E;
+  --color-navy-light: #111827;
+  --color-navy-mid: #0F172A;
+
+  /* ── Glassmorphism ── */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-bg-medium: rgba(255, 255, 255, 0.10);
+  --glass-bg-heavy: rgba(255, 255, 255, 0.15);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-light: rgba(255, 255, 255, 0.08);
+  --glass-blur: 16px;
+
+  /* ── Glow ── */
+  --glow-blue-sm: 0 0 15px rgba(37, 99, 235, 0.15);
+  --glow-blue-md: 0 0 30px rgba(37, 99, 235, 0.20);
+  --glow-blue-lg: 0 0 60px rgba(37, 99, 235, 0.25);
+  --glow-green: 0 0 20px rgba(16, 185, 129, 0.20);
+  --glow-red: 0 0 20px rgba(239, 68, 68, 0.20);
+
+  /* ── Transitions ── */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-fast: 150ms ease;
+  --transition-normal: 300ms ease;
+  --transition-spring: 500ms var(--ease-spring);
+
+  /* ── Radius ── */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   2. GLOBAL BASE STYLES — Dark Premium Foundation
+   ═══════════════════════════════════════════════════════════════════════════════ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Tajawal', 'Cairo', 'Inter', system-ui, sans-serif;
+  background-color: var(--color-navy);
+  color: #E2E8F0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-navy);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   3. GLASSMORPHISM UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Standard glass panel */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+}
+
+/* Heavy glass — more opaque, stronger blur */
+.glass-heavy {
+  background: var(--glass-bg-heavy);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Medium glass */
+.glass-medium {
+  background: var(--glass-bg-medium);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+}
+
+/* Glowing border (Royal Blue glow) */
+.glow-border {
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  box-shadow: var(--glow-blue-md), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Subtle glow border */
+.glow-border-sm {
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  box-shadow: var(--glow-blue-sm);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   4. TEXT & GRADIENT UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Royal Blue gradient text */
+.text-gradient-royal {
+  background: linear-gradient(135deg, var(--color-royal-light), var(--color-royal));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Accent gradient background (for decorative strips / accents) */
+.bg-gradient-royal {
+  background: linear-gradient(135deg, var(--color-royal), var(--color-royal-dark));
+}
+
+/* Subtle gradient for cards/surfaces */
+.bg-gradient-surface {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 100%);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   5. FOCUS RING UTILITY
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.focus-ring {
+  outline: none;
+}
+
+.focus-ring:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-navy), 0 0 0 4px var(--color-royal), var(--glow-blue-sm);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   6. SHIMMER / SKELETON LOADER
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.shimmer {
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0.04) 25%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite linear;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   7. ANIMATED BACKGROUND — Mesh Gradient Orbs
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Container for orbs — fixed behind all content */
+.animated-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Base orb style */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.3;
+  pointer-events: none;
+  will-change: transform;
+  animation: orbMove 20s ease-in-out infinite;
+}
+
+/* Royal Blue orb — top right */
+.orb-blue {
+  background: radial-gradient(circle, #2563EB, transparent 70%);
+  width: 500px;
+  height: 500px;
+  top: -10%;
+  right: -5%;
+}
+
+/* Purple orb — bottom left */
+.orb-purple {
+  background: radial-gradient(circle, #7C3AED, transparent 70%);
+  width: 400px;
+  height: 400px;
+  bottom: -5%;
+  left: -5%;
+  animation-delay: -7s;
+}
+
+/* Cyan orb — center */
+.orb-cyan {
+  background: radial-gradient(circle, #06B6D4, transparent 70%);
+  width: 350px;
+  height: 350px;
+  top: 40%;
+  left: 30%;
+  animation-delay: -13s;
+}
+
+/* Subtle variant — less visible for inner pages */
+.orb-subtle {
+  opacity: 0.15;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   8. KEYFRAME ANIMATIONS (CSS-level — compliments Tailwind config keyframes)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes orbMove {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulseDot {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes logoPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.08);
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   9. MISC UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Ensure app content sits above animated background */
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+
+/* Smooth image rendering */
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(37, 99, 235, 0.3);
+  color: #fff;
+}
