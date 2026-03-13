@@ -45,6 +45,23 @@ const User = sequelize.define(
             type: DataTypes.STRING(255),
             allowNull: true,
         },
+        // ── KYC & Verification ────────────────────────────────────────────────
+        id_card_front: {
+            type: DataTypes.STRING(255),
+            allowNull: true,
+        },
+        id_card_back: {
+            type: DataTypes.STRING(255),
+            allowNull: true,
+        },
+        id_selfie: {
+            type: DataTypes.STRING(255),
+            allowNull: true,
+        },
+        verification_status: {
+            type: DataTypes.ENUM('unverified', 'pending', 'verified', 'rejected'),
+            defaultValue: 'unverified',
+        },
         // ── Password Reset ────────────────────────────────────────────────────
         reset_token: {
             type: DataTypes.STRING(255),

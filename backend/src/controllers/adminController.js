@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { User, BeneficiaryProfile, VolunteerProfile } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
+const { getIo } = require('../socketHandler');
 
 /**
  * @desc  List all users with optional name/role/status filters + search
@@ -159,4 +160,50 @@ const getStats = async (req, res) => {
     }
 };
 
-module.exports = { getAllUsers, updateUserStatus, getStats };
+/**
+ * @desc  Review a user's identity verification submission (accept/reject)
+ * @route PATCH /api/users/:id/verify
+ * @access Private (admin only)
+ * 
+ * Body: { action: 'accept' | 'reject', notes?: 'Optional reasoning' }
+ */
+const reviewIdentityVerification = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { action } = req.body; // 'accept' or 'reject'
+        
+        if (!['accept', 'reject'].includes(action)) {
+            return sendError(res, 400, 'Action must be "accept" or "reject".');
+        }
+
+        const user = await User.findByPk(id);
+        if (!user) return sendError(res, 404, 'User not found.');
+
+        if (user.verification_status !== 'pending') {
+            return sendError(res, 400, `User verification status is ${user.verification_status}, cannot review.`);
+        }
+
+        const newStatus = action === 'accept' ? 'verified' : 'rejected';
+        await user.update({ verification_status: newStatus });
+
+        // Notify user via Socket.io
+        const io = getIo();
+        if (io) {
+            io.to(user.id.toString()).emit('new_notification', {
+                title: 'تحديث حالة التوثيق',
+                message: action === 'accept' ? 'تهانينا! تم توثيق حسابك بنجاح.' : 'نأسف، تم رفض طلب توثيق حسابك. يرجى المحاولة مرة أخرى.',
+                type: action === 'accept' ? 'success' : 'error',
+                link: '/profile'
+            });
+        }
+
+        return sendSuccess(res, 200, `User identity ${newStatus}.`, {
+            id: user.id,
+            verification_status: user.verification_status
+        });
+    } catch (error) {
+        return sendError(res, 500, error.message);
+    }
+};
+
+module.exports = { getAllUsers, updateUserStatus, getStats, reviewIdentityVerification };

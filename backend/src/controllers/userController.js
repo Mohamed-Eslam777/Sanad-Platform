@@ -24,9 +24,7 @@ const buildRoleProfile = (user) => {
             total_reviews: p.total_reviews,
             completed_requests: p.completed_requests || 0,
         };
-    }
-
-    return null;
+    }    return null;
 };
 
 const toUserDTO = (user) => ({
@@ -35,9 +33,11 @@ const toUserDTO = (user) => ({
     email: user.email,
     role: user.role,
     profile: buildRoleProfile(user),
-});
-
-/**
+    verification_status: user.verification_status, // added for Phase 5 KYC
+    id_card_front: user.id_card_front,
+    id_card_back: user.id_card_back,
+    id_selfie: user.id_selfie,
+});/**
  * @desc    Get a user's public profile by ID
  * @route   GET /api/users/:id
  * @access  Private
@@ -130,4 +130,37 @@ const updateProfile = async (req, res) => {
     }
 };
 
-module.exports = { getUserProfile, getMyProfile, updateProfile };
+/**
+ * @desc    Upload KYC documents and change status to pending
+ * @route   POST /api/users/verify-identity
+ * @access  Private
+ */
+const verifyIdentity = async (req, res) => {
+    try {
+        if (!req.files || !req.files['id_card_front'] || !req.files['id_card_back'] || !req.files['id_selfie']) {
+            return sendError(res, 400, 'Please upload all 3 required images (front, back, selfie).');
+        }
+
+        const frontUrl = `/uploads/identities/${req.files['id_card_front'][0].filename}`;
+        const backUrl = `/uploads/identities/${req.files['id_card_back'][0].filename}`;
+        const selfieUrl = `/uploads/identities/${req.files['id_selfie'][0].filename}`;
+
+        await req.user.update({
+            id_card_front: frontUrl,
+            id_card_back: backUrl,
+            id_selfie: selfieUrl,
+            verification_status: 'pending',
+        });
+
+        return sendSuccess(res, 200, 'Identity documents uploaded successfully. Your account is now pending review.', {
+            verification_status: 'pending',
+            id_card_front: frontUrl,
+            id_card_back: backUrl,
+            id_selfie: selfieUrl
+        });
+    } catch (error) {
+        return sendError(res, 500, error.message);
+    }
+};
+
+module.exports = { getUserProfile, getMyProfile, updateProfile, verifyIdentity };

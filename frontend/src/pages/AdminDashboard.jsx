@@ -23,7 +23,8 @@ import logo from '../assets/logo.png';
 import {
     ShieldAlert, Users, CheckCircle, Clock, Loader2, MapPin,
     Phone, AlertCircle, RefreshCw, LogOut, Search, ChevronDown,
-    List, LayoutDashboard, TrendingUp, FileText, UserPlus, Activity, Menu, X, Filter
+    List, LayoutDashboard, TrendingUp, FileText, UserPlus, Activity, Menu, X, Filter,
+    ShieldCheck, XCircle, FileImage, ExternalLink
 } from 'lucide-react';
 
 const POLL_INTERVAL = 10_000;
@@ -205,6 +206,12 @@ export default function AdminDashboard() {
     const [loadingAlerts, setLoadingAlerts] = useState(true);
     const [resolvingId, setResolvingId] = useState(null);
 
+    // ── KYC Verification
+    const [verifications, setVerifications] = useState([]);
+    const [loadingVerifications, setLoadingVerifications] = useState(true);
+    const [selectedVerification, setSelectedVerification] = useState(null);
+    const [reviewingId, setReviewingId] = useState(null);
+
     // ────────── DATA FETCHERS ──────────
     const fetchStats = useCallback(async () => {
         try {
@@ -243,14 +250,28 @@ export default function AdminDashboard() {
         finally { if (!silent) setLoadingAlerts(false); }
     }, []);
 
+    const fetchVerifications = useCallback(async (silent = false) => {
+        try {
+            if (!silent) setLoadingVerifications(true);
+            const res = await adminService.getAllUsers({ status: 'active', limit: 100 });
+            const pendingUsers = (res.data.users || []).filter(u => u.verification_status === 'pending');
+            setVerifications(pendingUsers);
+        } catch { /* silent */ }
+        finally { if (!silent) setLoadingVerifications(false); }
+    }, []);
+
     // ────────── EFFECTS ──────────
     useEffect(() => {
         fetchStats();
         fetchUsers();
         fetchAlerts(false);
-        const interval = setInterval(() => fetchAlerts(true), POLL_INTERVAL);
+        fetchVerifications(false);
+        const interval = setInterval(() => {
+            fetchAlerts(true);
+            fetchVerifications(true);
+        }, POLL_INTERVAL);
         return () => clearInterval(interval);
-    }, [fetchStats, fetchUsers, fetchAlerts]);
+    }, [fetchStats, fetchUsers, fetchAlerts, fetchVerifications]);
 
     useEffect(() => {
         if (activeTab === 'overview') {
@@ -261,7 +282,7 @@ export default function AdminDashboard() {
     useEffect(() => {
         const timer = setTimeout(() => fetchUsers(), 400);
         return () => clearTimeout(timer);
-    }, [search, roleFilter, statusFilter, page]);
+    }, [search, roleFilter, statusFilter, page, fetchUsers]);
 
     // ────────── HANDLERS ──────────
     const handleResolve = async (id) => {
@@ -280,12 +301,27 @@ export default function AdminDashboard() {
         showToast('تم تحديث حالة المستخدم بنجاح.', 'success');
     };
 
+    const handleVerificationReview = async (userId, action) => {
+        try {
+            setReviewingId(userId);
+            await api.patch(`/users/${userId}/verify`, { action });
+            setVerifications(prev => prev.filter(v => v.id !== userId));
+            setSelectedVerification(null);
+            showToast(action === 'accept' ? 'تم توثيق الحساب بنجاح.' : 'تم رفض التوثيق.', 'success');
+        } catch (err) {
+            showToast(err.response?.data?.message || 'فشل في تقييم الحساب.', 'error');
+        } finally {
+            setReviewingId(null);
+        }
+    };
+
     const activeAlerts = alerts.filter(a => a.status === 'active');
 
     // ────────── NAV ITEMS ──────────
     const navItems = [
         { key: 'overview', label: 'نظرة عامة', icon: LayoutDashboard },
         { key: 'users', label: 'إدارة المستخدمين', icon: Users },
+        { key: 'verification', label: 'طلبات التوثيق', icon: ShieldCheck, badge: verifications.length },
         { key: 'sos', label: 'نداءات الاستغاثة', icon: ShieldAlert, badge: activeAlerts.length },
     ];
 
@@ -712,7 +748,147 @@ export default function AdminDashboard() {
                         </motion.div>
                     </motion.div>
                 )}
+
+                {/* ════════════ VERIFICATION TAB ════════════════════════════ */}
+                {activeTab === 'verification' && (
+                    <motion.div key="verification" variants={containerVariants} initial="hidden" animate="visible" className="flex-1 w-full max-w-5xl mx-auto">
+                        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                            <div>
+                                <h2 className="text-2xl font-black text-white flex items-center gap-3">
+                                    طلبات التوثيق (KYC)
+                                    {verifications.length > 0 && <span className="bg-warning-500 text-white text-sm px-3 py-1 rounded-full shadow-glow-sm">{verifications.length}</span>}
+                                </h2>
+                                <p className="text-sm text-gray-400 mt-1">مراجعة هويات المستخدمين للحفاظ على أمان المنصة.</p>
+                            </div>
+                            <Button onClick={() => fetchVerifications(false)} variant="secondary" icon={<RefreshCw className="w-4 h-4" />}>تحديث</Button>
+                        </motion.div>
+
+                        <motion.div variants={itemVariants}>
+                            <Card variant="glass" padding="p-0" className="overflow-hidden">
+                                {loadingVerifications ? (
+                                    <div className="p-8"><Skeleton variant="card" height="150px" /></div>
+                                ) : verifications.length === 0 ? (
+                                    <div className="py-24">
+                                        <EmptyState
+                                            icon={ShieldCheck}
+                                            title="لا توجد طلبات معلقة"
+                                            subtitle="جميع حسابات المستخدمين الحالية تمت مراجعتها."
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-glass-light/50">
+                                        {verifications.map((v, idx) => (
+                                            <motion.div
+                                                key={v.id}
+                                                initial={{ opacity: 0, x: -20 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ delay: idx * 0.1 }}
+                                                className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-5 hover:bg-glass-light/50 transition-colors cursor-pointer"
+                                                onClick={() => setSelectedVerification(v)}
+                                            >
+                                                <div className="flex items-center gap-4">
+                                                    <Avatar name={v.full_name} size="md" />
+                                                    <div>
+                                                        <h3 className="font-bold text-white flex items-center gap-2">
+                                                            {v.full_name}
+                                                            <span className="text-[10px] bg-warning-500/20 text-warning-400 px-2 py-0.5 rounded-full border border-warning-500/30">تحتاج للمراجعة</span>
+                                                        </h3>
+                                                        <p className="text-xs text-gray-400 mt-1">{v.email} • {v.role === 'volunteer' ? 'متطوع' : 'مستفيد'}</p>
+                                                    </div>
+                                                </div>
+                                                <Button 
+                                                    onClick={(e) => { e.stopPropagation(); setSelectedVerification(v); }}
+                                                    variant="primary" 
+                                                    className="md:w-auto w-full"
+                                                >
+                                                    مراجعة المستندات
+                                                </Button>
+                                            </motion.div>
+                                        ))}
+                                    </div>
+                                )}
+                            </Card>
+                        </motion.div>
+                    </motion.div>
+                )}
             </main>
+
+            {/* KYC Review Modal */}
+            <AnimatePresence>
+                {selectedVerification && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-navy-950/90 backdrop-blur-md z-[70] p-4 flex items-center justify-center overflow-y-auto"
+                            onClick={() => setSelectedVerification(null)}
+                        >
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                onClick={e => e.stopPropagation()}
+                                className="w-full max-w-4xl glass-heavy border border-glass-border rounded-2xl shadow-glow-xl overflow-hidden my-8"
+                            >
+                                <div className="p-6 border-b border-glass-border flex justify-between items-center bg-glass-light/30">
+                                    <div className="flex items-center gap-4">
+                                        <Avatar name={selectedVerification.full_name} size="md" />
+                                        <div>
+                                            <h2 className="text-xl font-black text-white">{selectedVerification.full_name}</h2>
+                                            <p className="text-sm text-gray-400">طلب توثيق الهوية</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setSelectedVerification(null)} className="p-2 bg-glass-light hover:bg-glass-medium border border-glass-border rounded-xl text-gray-400 hover:text-white transition-colors">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 bg-navy-900/50">
+                                    {[
+                                        { title: 'وجه البطاقة', url: selectedVerification.id_card_front },
+                                        { title: 'ظهر البطاقة', url: selectedVerification.id_card_back },
+                                        { title: 'سيلفي الهوية', url: selectedVerification.id_selfie }
+                                    ].map((doc, i) => (
+                                        <div key={i} className="flex flex-col gap-3">
+                                            <h4 className="text-sm font-bold text-gray-300 flex items-center gap-2">
+                                                <FileImage className="w-4 h-4 text-royal-400" /> {doc.title}
+                                            </h4>
+                                            <div className="aspect-[4/3] bg-glass-heavy border border-glass-border rounded-xl overflow-hidden relative group">
+                                                <img src={process.env.REACT_APP_API_URL?.replace('/api', '') + doc.url} alt={doc.title} className="w-full h-full object-cover" />
+                                                <a href={process.env.REACT_APP_API_URL?.replace('/api', '') + doc.url} target="_blank" rel="noreferrer" 
+                                                   className="absolute inset-0 bg-navy-900/80 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm cursor-pointer">
+                                                    <ExternalLink className="w-8 h-8 text-white mb-2" />
+                                                    <span className="text-white font-bold text-sm">عرض بالحجم الكامل</span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="p-6 border-t border-glass-border flex flex-col sm:flex-row gap-4 justify-end bg-glass-light/30">
+                                    <Button
+                                        onClick={() => handleVerificationReview(selectedVerification.id, 'reject')}
+                                        disabled={reviewingId === selectedVerification.id}
+                                        loading={reviewingId === selectedVerification.id}
+                                        variant="danger"
+                                        icon={<XCircle className="w-5 h-5" />}
+                                    >
+                                        رفض التوثيق
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleVerificationReview(selectedVerification.id, 'accept')}
+                                        disabled={reviewingId === selectedVerification.id}
+                                        loading={reviewingId === selectedVerification.id}
+                                        icon={<ShieldCheck className="w-5 h-5" />}
+                                        className="bg-success-500 hover:bg-success-600 border-success-400 text-white"
+                                    >
+                                        تأكيد الحساب
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
