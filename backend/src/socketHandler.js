@@ -110,6 +110,7 @@ function registerSocketEvents(io, socket) {
                 sender_id: message.sender_id,
                 sender_name: userName,
                 content: message.content,
+                is_read: false,
                 created_at: message.created_at,
             });
 
@@ -154,6 +155,55 @@ function registerSocketEvents(io, socket) {
     socket.on('stop_typing', ({ requestId }) => {
         if (!requestId) return;
         socket.to(`request_${requestId}`).emit('stop_typing', { userId });
+    });
+
+    // ── mark_messages_read ────────────────────────────────────────────────────
+    // Marks all messages sent by the OTHER user in this room as read.
+    // Then tells everyone in the room so the sender's ticks turn blue.
+    socket.on('mark_messages_read', async ({ requestId }) => {
+        try {
+            if (!requestId) return;
+
+            const request = await Request.findByPk(requestId);
+            if (!request) return;
+
+            const isParticipant =
+                userId === request.beneficiary_id || userId === request.volunteer_id;
+            if (!isParticipant) return;
+
+            // Determine who sent the messages that WE are reading
+            const otherPartyId =
+                userId === request.beneficiary_id
+                    ? request.volunteer_id
+                    : request.beneficiary_id;
+
+            if (!otherPartyId) return;
+
+            // Bulk-update only the unread messages from the other party
+            const [updatedCount] = await Message.update(
+                { is_read: true },
+                {
+                    where: {
+                        request_id: requestId,
+                        sender_id: otherPartyId,
+                        is_read: false,
+                    },
+                }
+            );
+
+            if (updatedCount > 0) {
+                // Notify the whole room: messages from otherPartyId are now read
+                const roomName = `request_${requestId}`;
+                io.to(roomName).emit('messages_read', {
+                    requestId,
+                    readByUserId: userId,
+                    senderIdOfReadMessages: otherPartyId,
+                });
+                console.log(`👁️ ${userName} marked ${updatedCount} messages as read in room ${roomName}`);
+            }
+        } catch (err) {
+            console.error('mark_messages_read error:', err.message);
+        }
     });
 
     // ── disconnect ─────────────────────────────────────────────────────────────
