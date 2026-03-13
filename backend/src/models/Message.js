@@ -25,6 +25,14 @@ const Message = sequelize.define(
             type: DataTypes.TEXT,
             allowNull: false,
         },
+        attachment_url: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        attachment_type: {
+            type: DataTypes.ENUM('image', 'document', 'audio'),
+            allowNull: true,
+        },
         is_read: {
             type: DataTypes.BOOLEAN,
             defaultValue: false,

@@ -81,8 +81,10 @@ function registerSocketEvents(io, socket) {
     // ── send_message ──────────────────────────────────────────────────────────
     socket.on('send_message', async (data) => {
         try {
-            const { requestId, content } = data || {};
-            if (!requestId || !content?.trim()) return;
+            const { requestId, content, attachment_url, attachment_type } = data || {};
+            
+            // Allow send if we have a request ID and EITHER text content OR an attachment
+            if (!requestId || (!content?.trim() && !attachment_url)) return;
 
             const request = await Request.findByPk(requestId);
             if (!request) return socket.emit('error_message', { message: 'Request not found.' });
@@ -99,7 +101,9 @@ function registerSocketEvents(io, socket) {
             const message = await Message.create({
                 request_id: requestId,
                 sender_id: userId,
-                content: content.trim(),
+                content: content ? content.trim() : '',
+                attachment_url: attachment_url || null,
+                attachment_type: attachment_type || null,
             });
 
             // Broadcast chat message to everyone in the chat room
@@ -110,6 +114,8 @@ function registerSocketEvents(io, socket) {
                 sender_id: message.sender_id,
                 sender_name: userName,
                 content: message.content,
+                attachment_url: message.attachment_url,
+                attachment_type: message.attachment_type,
                 is_read: false,
                 created_at: message.created_at,
             });

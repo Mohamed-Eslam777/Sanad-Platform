@@ -9,7 +9,9 @@ const app = express();
 
 // ── 1. Security Headers (helmet) ───────────────────────────────────────────────
 // Sets X-Frame-Options, Content-Security-Policy, X-Content-Type-Options, etc.
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // ── 2. CORS — restricted to the frontend origin ────────────────────────────────
 // Set ALLOWED_ORIGIN in .env (e.g. https://sanad.app) for production.
@@ -74,10 +76,14 @@ const messageLimiter = rateLimit({
 });
 app.use('/api/messages', messageLimiter);
 
-// ── 5. API Routes ──────────────────────────────────────────────────────────────
+// ── 5. Static Files (Uploads) ──────────────────────────────────────────────────
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
+// ── 6. API Routes ──────────────────────────────────────────────────────────────
 app.use('/api', routes);
 
-// ── 6. Health Check ────────────────────────────────────────────────────────────
+// ── 7. Health Check ────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
     res.json({ message: 'Welcome to the Sanad API 🤝', status: 'OK' });
 });

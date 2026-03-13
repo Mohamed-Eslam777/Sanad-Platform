@@ -5,9 +5,16 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, MessageCircle, Loader2, AlertTriangle, Paperclip, Smile, MoreVertical, CheckCheck, Check } from 'lucide-react';
+import { X, Send, MessageCircle, Loader2, AlertTriangle, Paperclip, Smile, MoreVertical, CheckCheck, Check, Mic, FileText, Play, Square, Trash2, Download } from 'lucide-react';
 import api from '../services/api';
 import { getSocket } from '../services/socketService';
+
+// Helper to get absolute upload URL
+const getUploadUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http')) return url;
+    return `http://localhost:5000${url}`;
+};
 
 /* ─── Role-based avatar initials & gradient ───────────────────────────────── */
 function Avatar({ name, isOwn }) {
@@ -54,7 +61,44 @@ function Bubble({ msg, isOwn, senderName }) {
                 >
                     {/* Micro-texture overlay */}
                     <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
-                    <p className="break-words font-medium relative z-10">{msg.content}</p>
+                    
+                    {/* Attachment Rendering */}
+                    {msg.attachment_url && (
+                        <div className="relative z-10 mb-2 mt-1">
+                            {msg.attachment_type === 'image' && (
+                                <a href={getUploadUrl(msg.attachment_url)} target="_blank" rel="noreferrer" className="block outline-none">
+                                    <img 
+                                        src={getUploadUrl(msg.attachment_url)} 
+                                        alt="مرفق" 
+                                        className="max-w-[200px] max-h-[200px] rounded-xl object-cover hover:opacity-90 transition-opacity border border-white/10" 
+                                    />
+                                </a>
+                            )}
+                            {msg.attachment_type === 'document' && (
+                                <a 
+                                    href={getUploadUrl(msg.attachment_url)} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    className="flex items-center gap-3 bg-white/10 hover:bg-white/15 border border-white/20 p-2.5 rounded-xl transition-colors min-w-[160px]"
+                                >
+                                    <div className="w-8 h-8 rounded-lg bg-royal-500/20 flex items-center justify-center flex-shrink-0">
+                                        <FileText className="w-4 h-4 text-royal-200" />
+                                    </div>
+                                    <div className="flex-1 overflow-hidden">
+                                        <p className="text-xs font-semibold truncate text-white" dir="ltr">ملف مرفق</p>
+                                    </div>
+                                    <Download className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                                </a>
+                            )}
+                            {msg.attachment_type === 'audio' && (
+                                <div className="bg-white/10 rounded-full px-2 py-1.5 border border-white/10 min-w-[180px]">
+                                    <audio controls src={getUploadUrl(msg.attachment_url)} className="h-8 max-w-[200px] w-full custom-audio" />
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    {msg.content && <p className="break-words font-medium relative z-10">{msg.content}</p>}
                 </div>
 
                 {/* Timestamp + read tick (own messages only) */}
@@ -134,8 +178,18 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
     const [typingUser, setTypingUser] = useState(null);
     const [isConnected, setIsConnected] = useState(false);
 
+    // Attachments & Audio state
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [audioBlob, setAudioBlob] = useState(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const recordingIntervalRef = useRef(null);
+
     const bottomRef = useRef(null);
     const inputRef = useRef(null);
+    const fileInputRef = useRef(null);
     const socketRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     // Keep requestId stable in callbacks without re-subscribing
@@ -174,6 +228,9 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
 
         setMessages([]);
         setInput('');
+        setSelectedFile(null);
+        setAudioBlob(null);
+        setIsRecording(false);
         setLoadError(false);
         setInitializing(true);
         setTypingUser(null);
@@ -264,33 +321,137 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
         }, 2000);
     };
 
+    // ── Audio Recording Logic ───────────────────────────────────────────────
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                setAudioBlob(blob);
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingTime(0);
+            recordingIntervalRef.current = setInterval(() => {
+                setRecordingTime(prev => prev + 1);
+            }, 1000);
+        } catch (err) {
+            console.error("Microphone access denied or unsupported", err);
+            alert("يرجى السماح بالوصول إلى الميكروفون لتسجيل الصوت.");
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            clearInterval(recordingIntervalRef.current);
+        }
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+        }
+        setIsRecording(false);
+        setAudioBlob(null);
+        clearInterval(recordingIntervalRef.current);
+    };
+
+    // ── File Selection ────────────────────────────────────────────────────────
+    const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        // 10MB limit
+        if (file.size > 10 * 1024 * 1024) {
+            alert('حجم الملف كبير جداً. الحد الأقصى 10 ميجابايت.');
+            return;
+        }
+        setSelectedFile(file);
+        setAudioBlob(null); // Clear audio if file is selected
+        setTimeout(() => inputRef.current?.focus(), 100);
+    };
+
+    // ── Sending Logic ─────────────────────────────────────────────────────────
     const handleSend = async (e) => {
         e?.preventDefault();
         const trimmed = input.trim();
-        if (!trimmed || sending) return;
+        // Allow send if there is text, OR a file, OR an audio blob
+        if ((!trimmed && !selectedFile && !audioBlob) || sending) return;
 
+        setSending(true);
         const socket = socketRef.current;
+        if (socket) socket.emit('stop_typing', { requestId });
 
+        let attachment_url = null;
+        let attachment_type = null;
+
+        // 1. Upload attachment first if present
+        if (selectedFile || audioBlob) {
+            try {
+                const formData = new FormData();
+                if (selectedFile) {
+                    formData.append('attachment', selectedFile);
+                } else if (audioBlob) {
+                    formData.append('attachment', audioBlob, 'voice-note.webm');
+                }
+
+                const uploadRes = await api.post(`/messages/upload/${requestId}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                
+                attachment_url = uploadRes.data.data.attachment_url;
+                attachment_type = uploadRes.data.data.attachment_type;
+            } catch (err) {
+                console.error("Upload failed", err);
+                alert("فشل رفع المرفق. يرجى المحاولة مرة أخرى.");
+                setSending(false);
+                return;
+            }
+        }
+
+        // 2. Emit the message
         const optimistic = {
             id: `opt-${Date.now()}`,
             sender_id: currentUserId,
             content: trimmed,
+            attachment_url,
+            attachment_type,
             created_at: new Date().toISOString(),
             _optimistic: true,
         };
+        
         setMessages((prev) => [...prev, optimistic]);
         setInput('');
-        setSending(true);
-
-        if (socket) socket.emit('stop_typing', { requestId });
+        setSelectedFile(null);
+        setAudioBlob(null);
 
         if (socket && socket.connected) {
-            socket.emit('send_message', { requestId, content: trimmed });
+            socket.emit('send_message', { 
+                requestId, 
+                content: trimmed,
+                attachment_url,
+                attachment_type
+            });
             setSending(false);
             inputRef.current?.focus();
         } else {
             try {
-                const res = await api.post(`/messages/${requestId}`, { content: trimmed });
+                const res = await api.post(`/messages/${requestId}`, { 
+                    content: trimmed,
+                    attachment_url,
+                    attachment_type
+                });
                 setMessages((prev) => prev.map((m) => (m.id === optimistic.id ? res.data.data : m)));
             } catch {
                 setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
@@ -464,8 +625,45 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
                                 style={{ background: 'rgba(255,255,255,0.02)' }}
                             >
                                 <form onSubmit={handleSend}>
+                                    {/* Selected Attachment Preview */}
+                                    <AnimatePresence>
+                                        {(selectedFile || audioBlob) && (
+                                            <motion.div 
+                                                initial={{ opacity: 0, y: 10, height: 0 }}
+                                                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                                                exit={{ opacity: 0, y: 10, height: 0 }}
+                                                className="mb-3 px-2 flex"
+                                            >
+                                                <div className="bg-white/10 border border-white/20 rounded-xl px-3 py-2 flex items-center gap-3 backdrop-blur-md">
+                                                    {selectedFile ? (
+                                                        <>
+                                                            {selectedFile.type.startsWith('image/') ? (
+                                                                <img src={URL.createObjectURL(selectedFile)} alt="preview" className="w-8 h-8 rounded object-cover" />
+                                                            ) : (
+                                                                <FileText className="w-5 h-5 text-royal-300" />
+                                                            )}
+                                                            <span className="text-xs text-white max-w-[120px] truncate" dir="ltr">{selectedFile.name}</span>
+                                                        </>
+                                                    ) : audioBlob ? (
+                                                        <>
+                                                            <Mic className="w-5 h-5 text-emerald-400" />
+                                                            <span className="text-xs text-white">تسجيل صوتي ({Math.round(audioBlob.size / 1024)} KB)</span>
+                                                        </>
+                                                    ) : null}
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => { setSelectedFile(null); setAudioBlob(null); }}
+                                                        className="w-6 h-6 rounded-full bg-white/10 hover:bg-danger-500/20 text-gray-300 hover:text-danger-400 flex items-center justify-center transition-colors mr-2"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+
                                     <div
-                                        className="flex items-center gap-2 rounded-2xl px-3 py-2 transition-all"
+                                        className="flex items-end gap-2 rounded-2xl px-3 py-2 transition-all relative overflow-hidden"
                                         style={{
                                             background: 'rgba(255,255,255,0.05)',
                                             border: '1px solid rgba(255,255,255,0.08)',
@@ -473,54 +671,95 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
                                         }}
                                     >
                                         {/* Attachments icon */}
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            onChange={handleFileSelect}
+                                            className="hidden"
+                                            accept="image/*,application/pdf,.doc,.docx"
+                                        />
                                         <button
                                             type="button"
-                                            className="text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 p-1"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            disabled={isRecording || sending}
+                                            className="text-gray-600 hover:text-gray-400 disabled:opacity-30 transition-colors flex-shrink-0 p-1 mt-1"
                                             aria-label="إرفاق ملف"
                                         >
                                             <Paperclip className="w-4.5 h-4.5" />
                                         </button>
 
                                         {/* Text input */}
-                                        <textarea
-                                            ref={inputRef}
-                                            rows={1}
-                                            value={input}
-                                            onChange={handleInputChange}
-                                            onKeyDown={handleKeyDown}
-                                            placeholder="اكتب رسالتك هنا..."
-                                            className="flex-1 bg-transparent text-white text-sm outline-none resize-none placeholder-gray-600 leading-relaxed py-1.5 custom-scrollbar max-h-28"
-                                            style={{ fontFamily: 'inherit' }}
-                                        />
+                                        {/* Input Box OR Recording UI */}
+                                        {isRecording ? (
+                                            <div className="flex-1 flex items-center justify-between bg-error-500/10 rounded-xl px-4 py-2 my-1 border border-danger-500/20">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-2.5 h-2.5 rounded-full bg-danger-500 animate-pulse" />
+                                                    <span className="text-danger-400 text-sm font-semibold tracking-widest" dir="ltr">
+                                                        {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                                                    </span>
+                                                </div>
+                                                <span className="text-xs text-danger-300 font-medium">جارٍ التسجيل...</span>
+                                                <button type="button" onClick={cancelRecording} className="text-danger-400 hover:text-danger-300 p-1">
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <textarea
+                                                ref={inputRef}
+                                                rows={1}
+                                                value={input}
+                                                onChange={handleInputChange}
+                                                onKeyDown={handleKeyDown}
+                                                disabled={audioBlob !== null || sending}
+                                                placeholder={audioBlob ? "أضف نصاً (اختياري)..." : "اكتب رسالتك هنا..."}
+                                                className="flex-1 bg-transparent text-white text-sm outline-none resize-none placeholder-gray-600 leading-relaxed py-1.5 mt-0.5 custom-scrollbar max-h-28 disabled:opacity-50"
+                                                style={{ fontFamily: 'inherit' }}
+                                            />
+                                        )}
 
                                         {/* Emoji icon */}
-                                        <button
-                                            type="button"
-                                            className="text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 p-1"
-                                            aria-label="إيموجي"
-                                        >
-                                            <Smile className="w-4.5 h-4.5" />
-                                        </button>
+                                        {/* Mic Icon */}
+                                        {!input.trim() && !selectedFile && !isRecording && !audioBlob && (
+                                            <button
+                                                type="button"
+                                                onClick={startRecording}
+                                                className="text-gray-600 hover:text-emerald-400 transition-colors flex-shrink-0 p-1 mt-1"
+                                                aria-label="تسجيل صوتي"
+                                            >
+                                                <Mic className="w-4.5 h-4.5" />
+                                            </button>
+                                        )}
 
                                         {/* Send button */}
-                                        <button
-                                            type="submit"
-                                            disabled={!input.trim() || sending}
-                                            className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all disabled:opacity-30"
-                                            style={{
-                                                background: input.trim() && !sending
-                                                    ? 'linear-gradient(135deg, #6366f1, #7c3aed)'
-                                                    : 'rgba(255,255,255,0.05)',
-                                                border: '1px solid rgba(99,102,241,0.4)',
-                                                boxShadow: input.trim() && !sending ? '0 0 16px rgba(99,102,241,0.35)' : 'none',
-                                            }}
-                                            aria-label="إرسال"
-                                        >
-                                            {sending
-                                                ? <Loader2 className="w-4 h-4 text-white animate-spin" />
-                                                : <Send className="w-4 h-4 text-white" />
-                                            }
-                                        </button>
+                                        {/* Send/Stop Button */}
+                                        {isRecording ? (
+                                            <button
+                                                type="button"
+                                                onClick={stopRecording}
+                                                className="flex-shrink-0 w-9 h-9 mt-0.5 rounded-xl flex items-center justify-center bg-danger-500 hover:bg-danger-600 text-white shadow-[0_0_12px_rgba(239,68,68,0.5)] transition-all"
+                                            >
+                                                <Square className="w-3.5 h-3.5 fill-current" />
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="submit"
+                                                disabled={(!input.trim() && !selectedFile && !audioBlob) || sending}
+                                                className="flex-shrink-0 w-9 h-9 mt-0.5 rounded-xl flex items-center justify-center transition-all disabled:opacity-30"
+                                                style={{
+                                                    background: (input.trim() || selectedFile || audioBlob) && !sending
+                                                        ? 'linear-gradient(135deg, #6366f1, #7c3aed)'
+                                                        : 'rgba(255,255,255,0.05)',
+                                                    border: '1px solid rgba(99,102,241,0.4)',
+                                                    boxShadow: (input.trim() || selectedFile || audioBlob) && !sending ? '0 0 16px rgba(99,102,241,0.35)' : 'none',
+                                                }}
+                                                aria-label="إرسال"
+                                            >
+                                                {sending
+                                                    ? <Loader2 className="w-4 h-4 text-white animate-spin" />
+                                                    : <Send className="w-4 h-4 text-white -mt-0.5 ml-0.5" />
+                                                }
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Hint */}
