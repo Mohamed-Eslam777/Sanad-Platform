@@ -33,8 +33,8 @@ app.use(cors({
 app.use(express.json({ limit: '10kb' }));          // cap body size to prevent DoS
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// ── 4. Rate Limiting on Auth routes (Brute Force protection) ──────────────────
-// Max 20 login/register attempts per IP per 15 minutes.
+// ── 4. Rate Limiting ───────────────────────────────────────────────────────────
+// Auth: protect against brute-force on login/register
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20,
@@ -47,6 +47,32 @@ const authLimiter = rateLimit({
     skipSuccessfulRequests: true, // don't count successful logins against the rate
 });
 app.use('/api/auth', authLimiter);
+
+// SOS: prevent abuse of SOS endpoint
+const sosLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        status: 'error',
+        message: 'تم إرسال عدد كبير من طلبات الاستغاثة في وقت قصير. يرجى الانتظار قليلاً قبل المحاولة مرة أخرى.',
+    },
+});
+app.use('/api/sos', sosLimiter);
+
+// Messaging: lightweight rate limit to reduce spam
+const messageLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        status: 'error',
+        message: 'تجاوزت الحد المسموح من الرسائل في الدقيقة. يرجى الانتظار قليلاً ثم المتابعة.',
+    },
+});
+app.use('/api/messages', messageLimiter);
 
 // ── 5. API Routes ──────────────────────────────────────────────────────────────
 app.use('/api', routes);

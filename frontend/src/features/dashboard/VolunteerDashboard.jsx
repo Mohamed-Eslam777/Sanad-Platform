@@ -57,7 +57,31 @@ export default function VolunteerDashboard({ user }) {
     const fetchNearby = async () => {
         try {
             setLoadNearby(true);
-            const res = await requestService.getNearbyRequests();
+
+            // Try to use browser geolocation to enable real radius-based matching.
+            const getPosition = () =>
+                new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) {
+                        reject(new Error('Geolocation not supported'));
+                        return;
+                    }
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 8000,
+                        maximumAge: 60_000,
+                    });
+                });
+
+            let res;
+            try {
+                const pos = await getPosition();
+                const { latitude, longitude } = pos.coords;
+                res = await requestService.getNearbyRequests(latitude, longitude, 5);
+            } catch {
+                // If user denies or geolocation fails, fall back to server-side default
+                res = await requestService.getNearbyRequests();
+            }
+
             setNearby(res.data || []);
         } catch {
             /* silence */

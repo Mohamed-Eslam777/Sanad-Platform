@@ -245,7 +245,7 @@ export default function BeneficiaryDashboard({ user }) {
                         variant="danger"
                         loading={!!cancellingId}
                         onClick={handleCancelConfirm}
-                        className="flex-[2]"
+                        className="flex-2"
                     >
                         تأكيد الإلغاء
                     </Button>

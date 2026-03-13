@@ -23,7 +23,7 @@ import logo from '../assets/logo.png';
 import {
     ShieldAlert, Users, CheckCircle, Clock, Loader2, MapPin,
     Phone, AlertCircle, RefreshCw, LogOut, Search, ChevronDown,
-    List, LayoutDashboard, TrendingUp, FileText, UserPlus, Activity, Menu, X
+    List, LayoutDashboard, TrendingUp, FileText, UserPlus, Activity, Menu, X, Filter
 } from 'lucide-react';
 
 const POLL_INTERVAL = 10_000;
@@ -118,6 +118,57 @@ function ProgressBar({ label, value, max, color = 'bg-royal-500' }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Reusable Filter Dropdown (glassmorphism + framer-motion)
+   ═══════════════════════════════════════════════════════════════════════════ */
+function FilterDropdown({ value, onChange, options = [], placeholder, icon: Icon = Filter }) {
+    const [open, setOpen] = useState(false);
+    const activeLabel = options.find(o => o.value === value)?.label || placeholder;
+
+    return (
+        <div className="relative">
+            <button
+                onClick={() => setOpen(prev => !prev)}
+                className={`flex items-center gap-2 glass-medium border border-glass-border text-white text-xs font-bold rounded-full px-5 py-2 cursor-pointer outline-none transition-all shadow-glow-sm
+                    ${open ? 'border-royal-400 ring-2 ring-royal-500/20' : 'hover:border-royal-400/50'}`}
+            >
+                <Icon className="w-3.5 h-3.5 text-gray-400" />
+                <span>{activeLabel}</span>
+                <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            <AnimatePresence>
+                {open && (
+                    <>
+                        {/* click-outside overlay */}
+                        <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            transition={{ duration: 0.18, ease: 'easeOut' }}
+                            className="absolute start-0 mt-2 z-20 glass-heavy border border-glass-border rounded-xl shadow-glow-lg py-1.5 min-w-[150px]"
+                        >
+                            {options.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => { onChange(opt.value); setOpen(false); }}
+                                    className={`w-full text-right px-4 py-2.5 text-xs font-bold transition-colors flex items-center gap-2 text-white
+                                        ${opt.value === value ? 'bg-royal-600/20 text-royal-300' : 'hover:bg-royal-600/20'}`}
+                                >
+                                    {opt.label}
+                                    {opt.value === value && <CheckCircle className="w-3 h-3 ms-auto text-royal-400" />}
+                                </button>
+                            ))}
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MAIN ADMIN DASHBOARD
    ═══════════════════════════════════════════════════════════════════════════ */
 export default function AdminDashboard() {
@@ -155,14 +206,14 @@ export default function AdminDashboard() {
     const [resolvingId, setResolvingId] = useState(null);
 
     // ────────── DATA FETCHERS ──────────
-    const fetchStats = async () => {
+    const fetchStats = useCallback(async () => {
         try {
             setLoadingStats(true);
             const res = await adminService.getStats();
             setStats(res.data);
         } catch (e) { console.error('fetchStats error:', e); }
         finally { setLoadingStats(false); }
-    };
+    }, []);
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -199,14 +250,13 @@ export default function AdminDashboard() {
         fetchAlerts(false);
         const interval = setInterval(() => fetchAlerts(true), POLL_INTERVAL);
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchStats, fetchUsers, fetchAlerts]);
 
-    // Re-fetch stats whenever user navigates (back) to the overview tab
     useEffect(() => {
-        if (activeTab === 'overview' && !stats && !loadingStats) {
+        if (activeTab === 'overview') {
             fetchStats();
         }
-    }, [activeTab]);
+    }, [activeTab, fetchStats]);
 
     useEffect(() => {
         const timer = setTimeout(() => fetchUsers(), 400);
@@ -241,12 +291,6 @@ export default function AdminDashboard() {
 
     // shared glass input classes for tabular view
     const tabularInputClass = "bg-navy-900 border border-glass-border text-white rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-royal-400 focus:ring-2 focus:ring-royal-500/20 transition-all placeholder-gray-500 appearance-none cursor-pointer [&>option]:bg-navy-900 [&>option]:text-white";
-    // compact pill-shaped filter selects — matches row-level status dropdowns
-    // Inline SVG chevron so appearance-none still shows a down-arrow
-    const chevronSvg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`;
-    const filterSelectClass = `glass-medium border border-glass-border text-white text-xs font-bold rounded-full px-5 py-2 pe-9 cursor-pointer outline-none hover:border-royal-400/50 focus:border-royal-400 focus:ring-2 focus:ring-royal-500/20 transition-all appearance-none bg-no-repeat shadow-glow-sm [&>option]:bg-navy-900 [&>option]:text-white`;
-    const filterSelectStyle = { backgroundImage: chevronSvg, backgroundSize: '12px', backgroundPosition: 'left 14px center' };
-    const optionClass = "bg-[#060A14] text-white";
 
     return (
         <div dir="rtl" className="min-h-screen flex font-sans text-gray-200">
@@ -325,11 +369,11 @@ export default function AdminDashboard() {
 
                 {/* ════════════ OVERVIEW TAB ═══════════════════════════════ */}
                 {activeTab === 'overview' && (
-                    <motion.div key="overview" variants={containerVariants} initial="hidden" animate="visible" className="flex-1 w-full max-w-7xl mx-auto">
-                        <motion.div variants={itemVariants} className="mb-8">
+                    <div className="flex-1 w-full max-w-7xl mx-auto">
+                        <div className="mb-8">
                             <h2 className="text-2xl font-black text-white mb-1">نظرة عامة على المنصة</h2>
                             <p className="text-sm text-gray-400">إحصائيات حية ومباشرة من قاعدة البيانات.</p>
-                        </motion.div>
+                        </div>
 
                         {(loadingStats || !stats) ? (
                             <div className="mt-8">
@@ -346,132 +390,117 @@ export default function AdminDashboard() {
                                 {/* ── 4 Stat Cards ─────────────────────────── */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
                                     {[
-                                        { label: 'إجمالي المستخدمين', value: stats.users.total, icon: Users, bg: 'bg-royal-600/15', color: 'text-royal-400' },
-                                        { label: 'طلبات نشطة', value: stats.requests.pending + stats.requests.accepted + stats.requests.in_progress, icon: FileText, bg: 'bg-warning-500/15', color: 'text-warning-400' },
-                                        { label: 'طلبات مكتملة', value: stats.requests.completed, icon: CheckCircle, bg: 'bg-success-500/15', color: 'text-success-400' },
-                                        { label: 'نداءات SOS مفتوحة', value: stats.sos.active, icon: ShieldAlert, bg: 'bg-danger-500/15', color: 'text-danger-400' },
+                                        { label: 'إجمالي المستخدمين', value: stats?.users?.total, icon: Users, bg: 'bg-royal-600/15', color: 'text-royal-400' },
+                                        { label: 'طلبات نشطة', value: (stats?.requests?.pending || 0) + (stats?.requests?.accepted || 0) + (stats?.requests?.in_progress || 0), icon: FileText, bg: 'bg-warning-500/15', color: 'text-warning-400' },
+                                        { label: 'طلبات مكتملة', value: stats?.requests?.completed, icon: CheckCircle, bg: 'bg-success-500/15', color: 'text-success-400' },
+                                        { label: 'نداءات SOS مفتوحة', value: stats?.sos?.active, icon: ShieldAlert, bg: 'bg-danger-500/15', color: 'text-danger-400' },
                                     ].map((card, i) => (
-                                        <motion.div variants={itemVariants} key={i}>
-                                            <Card variant="glass" padding="p-6" className="min-h-[140px]">
-                                                <div className="relative z-10" style={{ position: 'relative', isolation: 'isolate' }}>
-                                                    <div className="flex items-center justify-between mb-4">
-                                                        <div className={`w-12 h-12 rounded-2xl ${card.bg} ${card.color} flex items-center justify-center relative z-10`}>
-                                                            <card.icon className="w-6 h-6" />
-                                                        </div>
-                                                        <TrendingUp className="w-4 h-4 text-gray-600 relative z-10" />
+                                        <Card key={i} variant="glass" padding="p-6" className="min-h-[140px]">
+                                            <div className="relative z-10" style={{ position: 'relative', isolation: 'isolate' }}>
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className={`w-12 h-12 rounded-2xl ${card.bg} ${card.color} flex items-center justify-center relative z-10`}>
+                                                        <card.icon className="w-6 h-6" />
                                                     </div>
-                                                    <p className="text-3xl font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] relative z-10">{card.value ?? 0}</p>
-                                                    <p className="text-sm font-bold text-gray-400 mt-1 relative z-10">{card.label}</p>
+                                                    <TrendingUp className="w-4 h-4 text-gray-600 relative z-10" />
                                                 </div>
-                                            </Card>
-                                        </motion.div>
-                                    ))
-                                    }
+                                                <p className="text-3xl font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] relative z-10">{card.value ?? 0}</p>
+                                                <p className="text-sm font-bold text-gray-400 mt-1 relative z-10">{card.label}</p>
+                                            </div>
+                                        </Card>
+                                    ))}
                                 </div>
 
                                 {/* ── Charts Row ──────────────────────────── */}
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                                    {/* Users Distribution */}
-                                    <motion.div variants={itemVariants}>
-                                        <Card variant="glass" padding="p-6">
-                                            <h3 className="font-black text-white mb-5 flex items-center gap-2">
-                                                <Users className="w-5 h-5 text-royal-400" /> توزيع المستخدمين
-                                            </h3>
-                                            <div className="space-y-4">
-                                                <ProgressBar label="مستفيدين" value={stats.users.beneficiary} max={stats.users.total} color="bg-success-400" />
-                                                <ProgressBar label="متطوعين" value={stats.users.volunteer} max={stats.users.total} color="bg-royal-400" />
-                                                <ProgressBar label="مديرين" value={stats.users.admin} max={stats.users.total} color="bg-[#7C3AED]" />
-                                            </div>
-                                            <div className="mt-5 pt-4 border-t border-glass-border flex items-center justify-between">
-                                                <span className="text-xs font-bold text-gray-400">الإجمالي</span>
-                                                <span className="font-black text-white">{stats.users.total} حساب</span>
-                                            </div>
-                                        </Card>
-                                    </motion.div>
+                                    <Card variant="glass" padding="p-6">
+                                        <h3 className="font-black text-white mb-5 flex items-center gap-2">
+                                            <Users className="w-5 h-5 text-royal-400" /> توزيع المستخدمين
+                                        </h3>
+                                        <div className="space-y-4">
+                                            <ProgressBar label="مستفيدين" value={stats?.users?.beneficiary || 0} max={stats?.users?.total || 1} color="bg-success-400" />
+                                            <ProgressBar label="متطوعين" value={stats?.users?.volunteer || 0} max={stats?.users?.total || 1} color="bg-royal-400" />
+                                            <ProgressBar label="مديرين" value={stats?.users?.admin || 0} max={stats?.users?.total || 1} color="bg-[#7C3AED]" />
+                                        </div>
+                                        <div className="mt-5 pt-4 border-t border-glass-border flex items-center justify-between">
+                                            <span className="text-xs font-bold text-gray-400">الإجمالي</span>
+                                            <span className="font-black text-white">{stats?.users?.total || 0} حساب</span>
+                                        </div>
+                                    </Card>
 
-                                    {/* Requests Distribution */}
-                                    <motion.div variants={itemVariants}>
-                                        <Card variant="glass" padding="p-6">
-                                            <h3 className="font-black text-white mb-5 flex items-center gap-2">
-                                                <FileText className="w-5 h-5 text-warning-400" /> حالة الطلبات
-                                            </h3>
-                                            <div className="space-y-4">
-                                                <ProgressBar label="معلّقة" value={stats.requests.pending} max={stats.requests.total || 1} color="bg-warning-400" />
-                                                <ProgressBar label="مقبولة" value={stats.requests.accepted} max={stats.requests.total || 1} color="bg-royal-400" />
-                                                <ProgressBar label="قيد التنفيذ" value={stats.requests.in_progress} max={stats.requests.total || 1} color="bg-[#A78BFA]" />
-                                                <ProgressBar label="مكتملة" value={stats.requests.completed} max={stats.requests.total || 1} color="bg-success-400" />
-                                                <ProgressBar label="ملغاة" value={stats.requests.cancelled} max={stats.requests.total || 1} color="bg-danger-400" />
-                                            </div>
-                                            <div className="mt-5 pt-4 border-t border-glass-border flex items-center justify-between">
-                                                <span className="text-xs font-bold text-gray-400">الإجمالي</span>
-                                                <span className="font-black text-white">{stats.requests.total} طلب</span>
-                                            </div>
-                                        </Card>
-                                    </motion.div>
+                                    <Card variant="glass" padding="p-6">
+                                        <h3 className="font-black text-white mb-5 flex items-center gap-2">
+                                            <FileText className="w-5 h-5 text-warning-400" /> حالة الطلبات
+                                        </h3>
+                                        <div className="space-y-4">
+                                            <ProgressBar label="معلّقة" value={stats?.requests?.pending || 0} max={stats?.requests?.total || 1} color="bg-warning-400" />
+                                            <ProgressBar label="مقبولة" value={stats?.requests?.accepted || 0} max={stats?.requests?.total || 1} color="bg-royal-400" />
+                                            <ProgressBar label="قيد التنفيذ" value={stats?.requests?.in_progress || 0} max={stats?.requests?.total || 1} color="bg-[#A78BFA]" />
+                                            <ProgressBar label="مكتملة" value={stats?.requests?.completed || 0} max={stats?.requests?.total || 1} color="bg-success-400" />
+                                            <ProgressBar label="ملغاة" value={stats?.requests?.cancelled || 0} max={stats?.requests?.total || 1} color="bg-danger-400" />
+                                        </div>
+                                        <div className="mt-5 pt-4 border-t border-glass-border flex items-center justify-between">
+                                            <span className="text-xs font-bold text-gray-400">الإجمالي</span>
+                                            <span className="font-black text-white">{stats?.requests?.total || 0} طلب</span>
+                                        </div>
+                                    </Card>
                                 </div>
 
                                 {/* ── Recent Activity ─────────────────────── */}
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Recent Users */}
-                                    <motion.div variants={itemVariants}>
-                                        <Card variant="glass" padding="p-6" className="h-full">
-                                            <h3 className="font-black text-white mb-4 flex items-center gap-2">
-                                                <UserPlus className="w-5 h-5 text-royal-400" /> أحدث المستخدمين
-                                            </h3>
-                                            {stats.recentUsers?.length === 0 ? (
-                                                <p className="text-sm text-gray-500 text-center py-6">لا يوجد مستخدمون بعد.</p>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    {stats.recentUsers.map(u => (
-                                                        <div key={u.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-glass-light transition-colors">
-                                                            <Avatar name={u.full_name} size="sm" />
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm font-bold text-white truncate">{u.full_name}</p>
-                                                                <p className="text-[11px] text-gray-400">{u.email}</p>
-                                                            </div>
-                                                            <span className={`text-[10px] font-black px-2 py-1 rounded-md border
-                                                                ${u.role === 'volunteer' ? 'bg-royal-600/15 text-royal-400 border-royal-500/20' :
-                                                                    u.role === 'admin' ? 'bg-[#7C3AED]/15 text-[#A78BFA] border-[#7C3AED]/20' :
-                                                                        'bg-success-500/15 text-success-400 border-success-500/20'}`}>
-                                                                {u.role === 'volunteer' ? 'متطوع' : u.role === 'admin' ? 'مدير' : 'مستفيد'}
-                                                            </span>
+                                    <Card variant="glass" padding="p-6" className="h-full">
+                                        <h3 className="font-black text-white mb-4 flex items-center gap-2">
+                                            <UserPlus className="w-5 h-5 text-royal-400" /> أحدث المستخدمين
+                                        </h3>
+                                        {stats?.recentUsers?.length === 0 ? (
+                                            <p className="text-sm text-gray-500 text-center py-6">لا يوجد مستخدمون بعد.</p>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {(stats?.recentUsers || []).map(u => (
+                                                    <div key={u.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-glass-light transition-colors">
+                                                        <Avatar name={u.full_name} size="sm" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-bold text-white truncate">{u.full_name}</p>
+                                                            <p className="text-[11px] text-gray-400">{u.email}</p>
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </Card>
-                                    </motion.div>
+                                                        <span className={`text-[10px] font-black px-2 py-1 rounded-md border
+                                                            ${u.role === 'volunteer' ? 'bg-royal-600/15 text-royal-400 border-royal-500/20' :
+                                                                u.role === 'admin' ? 'bg-[#7C3AED]/15 text-[#A78BFA] border-[#7C3AED]/20' :
+                                                                    'bg-success-500/15 text-success-400 border-success-500/20'}`}>
+                                                            {u.role === 'volunteer' ? 'متطوع' : u.role === 'admin' ? 'مدير' : 'مستفيد'}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </Card>
 
-                                    {/* Recent Requests */}
-                                    <motion.div variants={itemVariants}>
-                                        <Card variant="glass" padding="p-6" className="h-full">
-                                            <h3 className="font-black text-white mb-4 flex items-center gap-2">
-                                                <Activity className="w-5 h-5 text-warning-400" /> أحدث الطلبات
-                                            </h3>
-                                            {stats.recentRequests?.length === 0 ? (
-                                                <p className="text-sm text-gray-500 text-center py-6">لا توجد طلبات بعد.</p>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    {stats.recentRequests.map(r => (
-                                                        <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-glass-light transition-colors">
-                                                            <div className="w-9 h-9 rounded-full bg-warning-500/15 text-warning-400 border border-warning-500/30 flex items-center justify-center flex-shrink-0">
-                                                                <FileText className="w-4 h-4" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm font-bold text-white truncate">{r.description || 'طلب مساعدة'}</p>
-                                                                <p className="text-[11px] text-gray-400">بواسطة: {r.beneficiary?.full_name || '—'}</p>
-                                                            </div>
-                                                            <StatusBadge status={r.status} />
+                                    <Card variant="glass" padding="p-6" className="h-full">
+                                        <h3 className="font-black text-white mb-4 flex items-center gap-2">
+                                            <Activity className="w-5 h-5 text-warning-400" /> أحدث الطلبات
+                                        </h3>
+                                        {stats?.recentRequests?.length === 0 ? (
+                                            <p className="text-sm text-gray-500 text-center py-6">لا توجد طلبات بعد.</p>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {(stats?.recentRequests || []).map(r => (
+                                                    <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-glass-light transition-colors">
+                                                        <div className="w-9 h-9 rounded-full bg-warning-500/15 text-warning-400 border border-warning-500/30 flex items-center justify-center flex-shrink-0">
+                                                            <FileText className="w-4 h-4" />
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </Card>
-                                    </motion.div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-bold text-white truncate">{r.description || 'طلب مساعدة'}</p>
+                                                            <p className="text-[11px] text-gray-400">بواسطة: {r.beneficiary?.full_name || '—'}</p>
+                                                        </div>
+                                                        <StatusBadge status={r.status} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </Card>
                                 </div>
                             </>
                         )}
-                    </motion.div>
+                    </div>
                 )}
 
                 {/* ════════════ USERS TAB ══════════════════════════════════ */}
@@ -492,20 +521,30 @@ export default function AdminDashboard() {
                                             className={`${tabularInputClass} w-full pe-11 ps-4`} />
                                         <Search className="w-5 h-5 text-gray-500 absolute end-4 top-3" />
                                     </div>
-                                    <select value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
-                                        className={filterSelectClass} style={filterSelectStyle}>
-                                        <option value="" className={optionClass}>كل الأدوار</option>
-                                        <option value="beneficiary" className={optionClass}>مستفيد</option>
-                                        <option value="volunteer" className={optionClass}>متطوع</option>
-                                        <option value="admin" className={optionClass}>مسؤول</option>
-                                    </select>
-                                    <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-                                        className={filterSelectClass} style={filterSelectStyle}>
-                                        <option value="" className={optionClass}>كل الحالات</option>
-                                        <option value="active" className={optionClass}>نشط</option>
-                                        <option value="flagged" className={optionClass}>مراقب</option>
-                                        <option value="suspended" className={optionClass}>موقوف</option>
-                                    </select>
+                                    <FilterDropdown
+                                        value={roleFilter}
+                                        onChange={v => { setRoleFilter(v); setPage(1); }}
+                                        placeholder="كل الأدوار"
+                                        icon={Users}
+                                        options={[
+                                            { value: '', label: 'كل الأدوار' },
+                                            { value: 'beneficiary', label: 'مستفيد' },
+                                            { value: 'volunteer', label: 'متطوع' },
+                                            { value: 'admin', label: 'مسؤول' },
+                                        ]}
+                                    />
+                                    <FilterDropdown
+                                        value={statusFilter}
+                                        onChange={v => { setStatusFilter(v); setPage(1); }}
+                                        placeholder="كل الحالات"
+                                        icon={Activity}
+                                        options={[
+                                            { value: '', label: 'كل الحالات' },
+                                            { value: 'active', label: 'نشط' },
+                                            { value: 'flagged', label: 'مراقب' },
+                                            { value: 'suspended', label: 'موقوف' },
+                                        ]}
+                                    />
                                 </div>
 
                                 {/* Table */}

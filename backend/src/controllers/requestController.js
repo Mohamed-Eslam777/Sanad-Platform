@@ -70,21 +70,100 @@ const getRequests = async (req, res) => {
  * @route GET /api/requests/nearby
  * @access Private (volunteer)
  *
- * NOTE: Geo-filtering is temporarily disabled for development/testing.
- *       All pending requests are returned. Haversine filtering will be
- *       re-enabled once real geolocation data is available.
+ * Query params:
+ *  - lat, lng : volunteer coordinates (required for geo filter)
+ *  - radius   : radius in KM (default 5)
+ *
+ * If lat/lng are missing or invalid, falls back to returning all pending
+ * requests ordered by created_at DESC (same as getRequests).
  */
 const getNearbyRequests = async (req, res) => {
     try {
-        const requests = await Request.findAll({
-            where: { status: 'pending' },
-            include: [
-                { model: User, as: 'beneficiary', attributes: ['id', 'full_name', 'profile_picture'] },
-            ],
-            order: [['created_at', 'DESC']],
+        const { lat, lng, radius } = req.query;
+
+        const parsedLat = lat != null ? parseFloat(lat) : null;
+        const parsedLng = lng != null ? parseFloat(lng) : null;
+        const parsedRadius = radius != null ? parseFloat(radius) : 5;
+
+        const hasValidCoords =
+            typeof parsedLat === 'number' &&
+            !Number.isNaN(parsedLat) &&
+            typeof parsedLng === 'number' &&
+            !Number.isNaN(parsedLng);
+
+        // Fallback: no coordinates → behave like generic pending list
+        if (!hasValidCoords) {
+            const fallback = await Request.findAll({
+                where: { status: 'pending' },
+                include: [
+                    {
+                        model: User,
+                        as: 'beneficiary',
+                        attributes: ['id', 'full_name', 'profile_picture'],
+                    },
+                ],
+                order: [['created_at', 'DESC']],
+            });
+
+            return sendSuccess(res, 200, 'Pending requests (no geo filter applied).', fallback);
+        }
+
+        // Geo-filtered query using Haversine distance in SQL
+        const distanceExpr = haversineSQLString();
+        const sql = `
+            SELECT
+                r.*,
+                (${distanceExpr}) AS distance_km
+            FROM Requests r
+            WHERE
+                r.status = 'pending'
+                AND r.location_lat IS NOT NULL
+                AND r.location_lng IS NOT NULL
+            HAVING distance_km <= :radius
+            ORDER BY distance_km ASC, r.created_at DESC
+        `;
+
+        const rows = await sequelize.query(sql, {
+            type: QueryTypes.SELECT,
+            replacements: {
+                lat: parsedLat,
+                lng: parsedLng,
+                radius: parsedRadius,
+            },
         });
 
-        return sendSuccess(res, 200, 'Pending requests.', requests);
+        // Manually hydrate beneficiary relation for consistency with other endpoints
+        const requestIds = rows.map((r) => r.id);
+        let enriched = [];
+
+        if (requestIds.length > 0) {
+            enriched = await Request.findAll({
+                where: { id: requestIds },
+                include: [
+                    {
+                        model: User,
+                        as: 'beneficiary',
+                        attributes: ['id', 'full_name', 'profile_picture'],
+                    },
+                ],
+            });
+
+            // Attach distance_km onto each instance's dataValues for frontend usage
+            const distanceById = rows.reduce((acc, row) => {
+                acc[row.id] = row.distance_km;
+                return acc;
+            }, {});
+
+            enriched.forEach((reqInstance) => {
+                const id = reqInstance.id;
+                if (distanceById[id] != null) {
+                    // eslint-disable-next-line no-param-reassign
+                    reqInstance.dataValues.distance_km = Number(distanceById[id]);
+                }
+            });
+        }
+
+        return sendSuccess(res, 200, 'Nearby pending requests within radius.', enriched);
     } catch (error) {
         return sendError(res, 500, error);
     }

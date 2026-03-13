@@ -1,14 +1,14 @@
+import { io } from 'socket.io-client';
+
 /**
  * socketService.js — Singleton Socket.io client for Sanad frontend.
  *
- * Usage:
- *   import { getSocket, disconnectSocket } from '../services/socketService';
- *   const socket = getSocket();      // lazily connects using token from localStorage
- *   socket.emit('join_room', id);
- *   disconnectSocket();              // call on logout or unmount
+ * IMPORTANT: JWT token key MUST stay in sync with:
+ *  - TOKEN_KEY in `src/context/AuthContext.jsx`
+ *  - TOKEN_KEY in `src/services/api.js`
  */
 
-import { io } from 'socket.io-client';
+const TOKEN_KEY = 'sanad_token';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL
     ? import.meta.env.VITE_API_URL.replace('/api', '')
@@ -23,7 +23,7 @@ let socket = null;
 export function getSocket() {
     if (socket && socket.connected) return socket;
 
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
         console.warn('[socketService] No token found — cannot connect to socket.');
         return null;

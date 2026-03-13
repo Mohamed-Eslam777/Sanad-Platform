@@ -1,6 +1,42 @@
 const { User, BeneficiaryProfile, VolunteerProfile } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+const buildRoleProfile = (user) => {
+    if (user.role === 'beneficiary' && user.beneficiaryProfile) {
+        const p = user.beneficiaryProfile;
+        return {
+            type: 'beneficiary',
+            disability_type: p.disability_type,
+            medical_notes: p.medical_notes,
+            emergency_contact_name: p.emergency_contact_name,
+            emergency_contact_phone: p.emergency_contact_phone,
+        };
+    }
+
+    if (user.role === 'volunteer' && user.volunteerProfile) {
+        const p = user.volunteerProfile;
+        return {
+            type: 'volunteer',
+            bio: p.bio,
+            skills: p.skills,
+            average_rating: p.average_rating,
+            total_reviews: p.total_reviews,
+            completed_requests: p.completed_requests || 0,
+        };
+    }
+
+    return null;
+};
+
+const toUserDTO = (user) => ({
+    id: user.id,
+    name: user.full_name,
+    email: user.email,
+    role: user.role,
+    profile: buildRoleProfile(user),
+});
+
 /**
  * @desc    Get a user's public profile by ID
  * @route   GET /api/users/:id
@@ -17,7 +53,7 @@ const getUserProfile = async (req, res) => {
         });
 
         if (!user) return sendError(res, 404, 'User not found.');
-        return sendSuccess(res, 200, 'User profile.', user);
+        return sendSuccess(res, 200, 'User profile.', toUserDTO(user));
     } catch (error) {
         return sendError(res, 500, error.message);
     }
@@ -37,7 +73,7 @@ const getMyProfile = async (req, res) => {
                 { model: VolunteerProfile, as: 'volunteerProfile' },
             ],
         });
-        return sendSuccess(res, 200, 'Your profile.', user);
+        return sendSuccess(res, 200, 'Your profile.', toUserDTO(user));
     } catch (error) {
         return sendError(res, 500, error.message);
     }
@@ -88,7 +124,7 @@ const updateProfile = async (req, res) => {
             ],
         });
 
-        return sendSuccess(res, 200, 'Profile updated successfully.', updated);
+        return sendSuccess(res, 200, 'Profile updated successfully.', toUserDTO(updated));
     } catch (error) {
         return sendError(res, 500, error.message);
     }

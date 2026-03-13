@@ -109,7 +109,7 @@ const updateUserStatus = async (req, res) => {
 const getStats = async (req, res) => {
     try {
         // Use the same model imports already at the top
-        const { Request, SOS } = require('../models');
+        const { Request, SOSAlert } = require('../models');
 
         // User counts by role
         const totalUsers = await User.count();
@@ -128,8 +128,8 @@ const getStats = async (req, res) => {
         // SOS counts
         let activeSOS = 0, resolvedSOS = 0;
         try {
-            activeSOS = await SOS.count({ where: { status: 'active' } });
-            resolvedSOS = await SOS.count({ where: { status: 'resolved' } });
+            activeSOS = await SOSAlert.count({ where: { status: 'active' } });
+            resolvedSOS = await SOSAlert.count({ where: { status: 'resolved' } });
         } catch { /* SOS table might not exist yet */ }
 
         // Recent users (last 5)

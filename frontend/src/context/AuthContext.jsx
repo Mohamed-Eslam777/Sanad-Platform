@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { getSocket, disconnectSocket } from '../services/socketService';
 
 /**
  * AuthContext — global authentication state for Sanad.
@@ -43,7 +44,7 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
-    // ── login: save token FIRST, then user state ─────────────────────────────
+    // ── login: save token FIRST, then user state + ensure socket connection ─
     const login = useCallback((userData, jwtToken) => {
         // 1. Persist to storage so any new API call can pick up the token immediately
         localStorage.setItem(TOKEN_KEY, jwtToken);
@@ -51,10 +52,24 @@ export function AuthProvider({ children }) {
         // 2. Update React state
         setToken(jwtToken);
         setUser(userData);
+
+        // 3. Lazily establish a socket connection for real-time features
+        try {
+            getSocket();
+        } catch {
+            // Socket connection failures shouldn't block login
+        }
     }, []);
 
     // ── logout ────────────────────────────────────────────────────────────────
     const logout = useCallback(() => {
+        // Cleanly tear down any active socket connection before dropping auth
+        try {
+            disconnectSocket();
+        } catch {
+            // Ignore errors on disconnect
+        }
+
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
         setToken(null);

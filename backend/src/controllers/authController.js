@@ -1,7 +1,37 @@
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const { User, BeneficiaryProfile, VolunteerProfile } = require('../models');
 const { hashPassword, comparePasswords, generateToken } = require('../services/authService');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
+
+// ── Password reset mail transport (lazy singleton) ─────────────────────────────
+let mailTransport = null;
+
+const getMailTransport = () => {
+    if (mailTransport) return mailTransport;
+
+    const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
+
+    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+        // In non-production, allow running without real SMTP
+        if (process.env.NODE_ENV === 'production') {
+            throw new Error('SMTP configuration is missing. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS.');
+        }
+        return null;
+    }
+
+    mailTransport = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: Number(SMTP_PORT),
+        secure: SMTP_SECURE === 'true',
+        auth: {
+            user: SMTP_USER,
+            pass: SMTP_PASS,
+        },
+    });
+
+    return mailTransport;
+};
 
 /**
  * @desc    Register a new user (beneficiary or volunteer)
@@ -28,9 +58,16 @@ const register = async (req, res) => {
 
         const token = generateToken({ id: user.id, role: user.role });
 
+        const dto = {
+            id: user.id,
+            name: user.full_name,
+            email: user.email,
+            role: user.role,
+        };
+
         return sendSuccess(res, 201, 'Account created successfully.', {
             token,
-            user: { id: user.id, full_name: user.full_name, email: user.email, role: user.role },
+            user: dto,
         });
     } catch (error) {
         return sendError(res, 500, error);
@@ -62,9 +99,16 @@ const login = async (req, res) => {
 
         const token = generateToken({ id: user.id, role: user.role });
 
+        const dto = {
+            id: user.id,
+            name: user.full_name,
+            email: user.email,
+            role: user.role,
+        };
+
         return sendSuccess(res, 200, 'Logged in successfully.', {
             token,
-            user: { id: user.id, full_name: user.full_name, email: user.email, role: user.role },
+            user: dto,
         });
     } catch (error) {
         return sendError(res, 500, error);
@@ -78,7 +122,14 @@ const login = async (req, res) => {
  */
 const getMe = async (req, res) => {
     try {
-        return sendSuccess(res, 200, 'Current user data.', req.user);
+        const u = req.user;
+        const dto = {
+            id: u.id,
+            name: u.full_name,
+            email: u.email,
+            role: u.role,
+        };
+        return sendSuccess(res, 200, 'Current user data.', dto);
     } catch (error) {
         return sendError(res, 500, error);
     }
@@ -123,16 +174,45 @@ const forgotPassword = async (req, res) => {
             reset_token_expires: expires,
         });
 
-        //
-        // ── TODO (Production): Send email with rawToken ──────────────────────
         // The URL contains rawToken (plain), not the hash. Only the plain token
         // can be matched back to the stored hash via SHA-256.
-        //
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${rawToken}`;
-        console.log('─────────────────────────────────────────────────────');
-        console.log('[Sanad] Password reset link (dev only, do NOT log in production):');
-        console.log(resetUrl);
-        console.log('─────────────────────────────────────────────────────');
+
+        // Try to send a real email if SMTP is configured
+        try {
+            const transport = getMailTransport();
+            if (transport) {
+                await transport.sendMail({
+                    from: process.env.SMTP_FROM || '"Sanad Support" <no-reply@sanad.app>',
+                    to: user.email,
+                    subject: 'إعادة تعيين كلمة المرور - سَنَد',
+                    html: `
+                        <p>مرحباً ${user.full_name},</p>
+                        <p>لقد طلبت إعادة تعيين كلمة المرور لحسابك في منصة <strong>سَنَد</strong>.</p>
+                        <p>يمكنك تعيين كلمة مرور جديدة عبر الضغط على الرابط التالي:</p>
+                        <p><a href="${resetUrl}" target="_blank" rel="noopener noreferrer">${resetUrl}</a></p>
+                        <p>ينتهي هذا الرابط خلال ساعة واحدة، وإذا لم تكن قد طلبت هذه العملية فتجاهل هذه الرسالة.</p>
+                        <p>مع خالص التحية،<br/>فريق سَنَد</p>
+                    `,
+                });
+            } else {
+                // Development fallback: log URL to console
+                // eslint-disable-next-line no-console
+                console.log('─────────────────────────────────────────────────────');
+                // eslint-disable-next-line no-console
+                console.log('[Sanad] Password reset link (dev only, configure SMTP for production):');
+                // eslint-disable-next-line no-console
+                console.log(resetUrl);
+                // eslint-disable-next-line no-console
+                console.log('─────────────────────────────────────────────────────');
+            }
+        } catch (mailError) {
+            // Don't leak mail error details to client; keep generic message
+            if (process.env.NODE_ENV !== 'production') {
+                // eslint-disable-next-line no-console
+                console.error('[Sanad] Failed to send reset email:', mailError.message);
+            }
+        }
 
         return sendSuccess(res, 200, GENERIC_MSG);
     } catch (error) {
