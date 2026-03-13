@@ -2,7 +2,7 @@ const { User, BeneficiaryProfile, VolunteerProfile } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-const buildRoleProfile = (user) => {
+const buildRoleProfileAsync = async (user) => {
     if (user.role === 'beneficiary' && user.beneficiaryProfile) {
         const p = user.beneficiaryProfile;
         return {
@@ -16,23 +16,32 @@ const buildRoleProfile = (user) => {
 
     if (user.role === 'volunteer' && user.volunteerProfile) {
         const p = user.volunteerProfile;
+        const { Request, Review } = require('../models');
+        const [completedCount, activeCount, totalReviews] = await Promise.all([
+            Request.count({ where: { volunteer_id: user.id, status: 'completed' } }),
+            Request.count({ where: { volunteer_id: user.id, status: ['accepted', 'in_progress', 'completion_requested'] } }),
+            Review.count({ where: { reviewed_id: user.id } })
+        ]);
+        
         return {
             type: 'volunteer',
             bio: p.bio,
             skills: p.skills,
             average_rating: p.average_rating,
-            total_reviews: p.total_reviews,
-            completed_requests: p.completed_requests || 0,
+            total_reviews: totalReviews,
+            completed_requests: completedCount,
+            active_tasks: activeCount,
         };
-    }    return null;
+    }    
+    return null;
 };
 
-const toUserDTO = (user) => ({
+const toUserDTOAsync = async (user) => ({
     id: user.id,
     name: user.full_name,
     email: user.email,
     role: user.role,
-    profile: buildRoleProfile(user),
+    profile: await buildRoleProfileAsync(user),
     verification_status: user.verification_status, // added for Phase 5 KYC
     id_card_front: user.id_card_front,
     id_card_back: user.id_card_back,
@@ -53,7 +62,7 @@ const getUserProfile = async (req, res) => {
         });
 
         if (!user) return sendError(res, 404, 'User not found.');
-        return sendSuccess(res, 200, 'User profile.', toUserDTO(user));
+        return sendSuccess(res, 200, 'User profile.', await toUserDTOAsync(user));
     } catch (error) {
         return sendError(res, 500, error.message);
     }
@@ -73,7 +82,7 @@ const getMyProfile = async (req, res) => {
                 { model: VolunteerProfile, as: 'volunteerProfile' },
             ],
         });
-        return sendSuccess(res, 200, 'Your profile.', toUserDTO(user));
+        return sendSuccess(res, 200, 'Your profile.', await toUserDTOAsync(user));
     } catch (error) {
         return sendError(res, 500, error.message);
     }
@@ -124,7 +133,7 @@ const updateProfile = async (req, res) => {
             ],
         });
 
-        return sendSuccess(res, 200, 'Profile updated successfully.', toUserDTO(updated));
+        return sendSuccess(res, 200, 'Profile updated successfully.', await toUserDTOAsync(updated));
     } catch (error) {
         return sendError(res, 500, error.message);
     }

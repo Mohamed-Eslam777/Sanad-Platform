@@ -8,12 +8,12 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Dependencies
-node_modules
+node_modules/
 
 # Build output
-dist
+dist/
 dist-ssr
-build
+build/
 
 # Environment variables
 .env
@@ -22,7 +22,7 @@ build
 *.local
 
 # Editor directories and files
-.vscode/*
+.vscode/
 !.vscode/extensions.json
 .idea
 .DS_Store
@@ -32,5 +32,9 @@ build
 *.sln
 *.sw?
 
+# Public Uploads (inherited requirements)
+public/uploads/*
+!public/uploads/**/.gitkeep
+
 # Coverage
-coverage
+coverage/

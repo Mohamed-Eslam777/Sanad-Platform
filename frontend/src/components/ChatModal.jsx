@@ -6,8 +6,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, MessageCircle, Loader2, AlertTriangle, Paperclip, Smile, MoreVertical, CheckCheck, Check, Mic, FileText, Play, Square, Trash2, Download } from 'lucide-react';
+import CustomAudioPlayer from './common/CustomAudioPlayer';
 import api from '../services/api';
 import { getSocket } from '../services/socketService';
+import ConfirmCompletionModal from './requests/ConfirmCompletionModal';
+import { requestCompletion, confirmCompletion } from '../services/requestService';
+import { toast } from 'react-toastify';
 
 // Helper to get absolute upload URL
 const getUploadUrl = (url) => {
@@ -91,9 +95,7 @@ function Bubble({ msg, isOwn, senderName }) {
                                 </a>
                             )}
                             {msg.attachment_type === 'audio' && (
-                                <div className="bg-white/10 rounded-full px-2 py-1.5 border border-white/10 min-w-[180px]">
-                                    <audio controls src={getUploadUrl(msg.attachment_url)} className="h-8 max-w-[200px] w-full custom-audio" />
-                                </div>
+                                <CustomAudioPlayer src={getUploadUrl(msg.attachment_url)} />
                             )}
                         </div>
                     )}
@@ -169,7 +171,7 @@ function DateDivider({ label }) {
 }
 
 /* ─── ChatModal ────────────────────────────────────────────────────────────── */
-function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, currentUserId, currentUserName, otherPartyName }) {
+function ChatModal({ isOpen, onClose, requestId, requestType, requestStatus, otherPartyRole, currentUserId, currentUserName, otherPartyName, onStatusChange }) {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
@@ -195,6 +197,10 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
     // Keep requestId stable in callbacks without re-subscribing
     const requestIdRef = useRef(requestId);
     useEffect(() => { requestIdRef.current = requestId; }, [requestId]);
+
+    // Two-Step Completion State
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
     const myName = currentUserName || 'أنا';
     const theirName = otherPartyName || (otherPartyRole === 'volunteer' ? 'المتطوع' : 'المستفيد');
@@ -319,6 +325,37 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
         typingTimeoutRef.current = setTimeout(() => {
             socket.emit('stop_typing', { requestId });
         }, 2000);
+    };
+
+    // ── Two-Step Request Completion ──────────────────────────────────────────
+    const handleRequestCompletion = async () => {
+        if (isStatusUpdating) return;
+        setIsStatusUpdating(true);
+        try {
+            await requestCompletion(requestId);
+            if (onStatusChange) onStatusChange(requestId, 'completion_requested');
+        } catch (error) {
+            console.error('Error requesting completion', error);
+            alert('حدث خطأ أثناء طلب إنهاء المهمة');
+        } finally {
+            setIsStatusUpdating(false);
+        }
+    };
+
+    const handleConfirmCompletion = async ({ rating, comment }) => {
+        setIsStatusUpdating(true);
+        try {
+            await confirmCompletion(requestId, { rating, comment });
+            setIsConfirmModalOpen(false);
+            if (onStatusChange) onStatusChange(requestId, 'completed');
+            // Close the chat modal as the task is finished
+            setTimeout(onClose, 500); 
+        } catch (error) {
+            console.error('Error confirming completion', error);
+            alert('حدث خطأ أثناء تأكيد الإتمام');
+        } finally {
+            setIsStatusUpdating(false);
+        }
     };
 
     // ── Audio Recording Logic ───────────────────────────────────────────────
@@ -472,6 +509,7 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
     };
 
     return (
+        <>
         <AnimatePresence>
             {isOpen && (
                 <>
@@ -541,6 +579,47 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
 
                                 {/* Right: action buttons */}
                                 <div className="flex items-center gap-2">
+                                    {/* ── Dynamic Completion Verification Flow ── */}
+                                    {requestStatus === 'accepted' || requestStatus === 'in_progress' ? (
+                                        otherPartyRole === 'beneficiary' ? (
+                                            // Volunteer Action
+                                            <button
+                                                onClick={handleRequestCompletion}
+                                                disabled={isStatusUpdating}
+                                                title="طلب إتمام الواجب"
+                                                className="h-8 px-3 rounded-lg flex items-center justify-center text-emerald-400 hover:bg-emerald-500/10 border border-emerald-500/20 transition-colors shadow-glow-sm disabled:opacity-50"
+                                            >
+                                                {isStatusUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 ml-1" />}
+                                                <span className="text-xs font-bold">طلب إتمام المهمة</span>
+                                            </button>
+                                        ) : (
+                                            // Beneficiary View (if no completion requested yet)
+                                            <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-1 rounded-md">في انتظار أداء المتطوع...</span>
+                                        )
+                                    ) : requestStatus === 'completion_requested' ? (
+                                        otherPartyRole === 'volunteer' ? (
+                                            // Beneficiary Action (Needs to Confirm)
+                                            <button
+                                                onClick={() => setIsConfirmModalOpen(true)}
+                                                className="h-8 px-3 rounded-lg flex items-center justify-center text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-all shadow-[0_0_10px_rgba(251,191,36,0.3)] animate-pulse"
+                                            >
+                                                <ShieldCheck className="w-4 h-4 ml-1" />
+                                                <span className="text-xs font-black">تأكيد الإتمام والتقييم</span>
+                                            </button>
+                                        ) : (
+                                            // Volunteer View (Waiting for beneficiary)
+                                            <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-md shadow-glow-sm flex items-center gap-1">
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                في انتظار تأكيد المستفيد...
+                                            </span>
+                                        )
+                                    ) : requestStatus === 'completed' ? (
+                                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-md shadow-glow-sm flex items-center gap-1">
+                                            <CheckCheck className="w-3 h-3" />
+                                            تم الإتمام المسبق
+                                        </span>
+                                    ) : null}
+
                                     <button
                                         className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
                                         style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
@@ -773,7 +852,16 @@ function ChatModal({ isOpen, onClose, requestId, requestType, otherPartyRole, cu
                 </>
             )}
         </AnimatePresence>
+
+        <ConfirmCompletionModal
+            isOpen={isConfirmModalOpen}
+            onClose={() => setIsConfirmModalOpen(false)}
+            onConfirm={handleConfirmCompletion}
+            volunteerName={theirName}
+            isSubmitting={isStatusUpdating}
+        />
+        </>
     );
-}
+};
 
 export default ChatModal;

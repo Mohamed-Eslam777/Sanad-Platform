@@ -1,4 +1,4 @@
-const { sequelize, Request, User } = require('../models');
+const { sequelize, Request, User, Review, VolunteerProfile } = require('../models');
 const { QueryTypes } = require('sequelize');
 const { haversineSQLString } = require('../services/geoService');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
@@ -219,40 +219,119 @@ const acceptRequest = async (req, res) => {
 };
 
 /**
- * @desc    Mark a request as completed (volunteer or beneficiary)
- * @route   PATCH /api/requests/:id/complete
- * @access  Private
+ * @desc    Volunteer requests that the task be marked as completed.
+ * @route   PATCH /api/requests/:id/request-completion
+ * @access  Private (Volunteer)
  */
-const completeRequest = async (req, res) => {
+const requestCompletion = async (req, res) => {
     try {
         const request = await Request.findByPk(req.params.id);
         if (!request) return sendError(res, 404, 'Request not found.');
 
-        const isOwner =
-            req.user.id === request.beneficiary_id || req.user.id === request.volunteer_id;
-        if (!isOwner) return sendError(res, 403, 'Not authorized to complete this request.');
+        // Only the assigned volunteer can request completion
+        if (req.user.id !== request.volunteer_id) {
+            return sendError(res, 403, 'Not authorized. Only the assigned volunteer can request completion.');
+        }
+
         if (request.status !== 'accepted' && request.status !== 'in_progress') {
-            return sendError(res, 400, 'Request cannot be completed at this stage.');
+            return sendError(res, 400, 'Cannot request completion at this current stage.');
         }
 
-        await request.update({ status: 'completed', completed_at: new Date() });
+        await request.update({ status: 'completion_requested' });
 
-        // 🔔 Notify the other party about completion
-        const otherId = req.user.id === request.beneficiary_id
-            ? request.volunteer_id
-            : request.beneficiary_id;
-        if (otherId) {
-            notifyUser(otherId, {
-                type: 'request_completed',
-                title: 'تم إكمال الطلب ✅',
-                body: `تم إكمال الطلب #${request.id} بنجاح. يمكنك الآن ترك تقييم.`,
-                requestId: request.id,
-                link: `/requests/${request.id}`,
-            });
-        }
+        // 🔔 Notify Beneficiary
+        notifyUser(request.beneficiary_id, {
+            type: 'completion_requested',
+            title: 'طلب إتمام المهمة 🔔',
+            body: `لقد أشار ${req.user.full_name} إلى إخلاء مسؤوليته وإتمام الطلب. يرجى تأكيد العملية وتقييم المتطوع.`,
+            requestId: request.id,
+            link: `/requests/${request.id}`,
+        });
 
-        return sendSuccess(res, 200, 'Request marked as completed. You can now leave a review.', request);
+        return sendSuccess(res, 200, 'Completion requested successfully. Awaiting beneficiary confirmation.', request);
     } catch (error) {
+        return sendError(res, 500, error);
+    }
+};
+
+/**
+ * @desc    Beneficiary confirms completion, rates volunteer, and finalizes request.
+ * @route   POST /api/requests/:id/confirm-completion
+ * @access  Private (Beneficiary)
+ */
+const confirmCompletion = async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const { rating, comment } = req.body;
+        
+        if (!rating || rating < 1 || rating > 5) {
+            await t.rollback();
+            return sendError(res, 400, 'Please provide a valid rating between 1 and 5.');
+        }
+
+        const request = await Request.findByPk(req.params.id, { transaction: t });
+        if (!request) {
+            await t.rollback();
+            return sendError(res, 404, 'Request not found.');
+        }
+
+        // Only the beneficiary who made the request can confirm it
+        if (req.user.id !== request.beneficiary_id) {
+            await t.rollback();
+            return sendError(res, 403, 'Not authorized. Only the beneficiary can confirm completion.');
+        }
+
+        if (request.status !== 'completion_requested') {
+            await t.rollback();
+            return sendError(res, 400, 'Request is not pending completion confirmation.');
+        }
+
+        // 1. Mark request as completed
+        await request.update({ status: 'completed', completed_at: new Date() }, { transaction: t });
+
+        // 2. Create Review
+        await Review.create({
+            request_id: request.id,
+            reviewer_id: req.user.id,
+            reviewed_id: request.volunteer_id,
+            rating,
+            comment
+        }, { transaction: t });
+
+        // 3. Update Volunteer's Average Rating
+        // Calculate the new average securely
+        const allReviews = await Review.findAll({
+            where: { reviewed_id: request.volunteer_id },
+            transaction: t
+        });
+        
+        const totalRating = allReviews.reduce((sum, rev) => sum + rev.rating, 0);
+        const newAverage = allReviews.length > 0 ? (totalRating / allReviews.length).toFixed(1) : rating;
+
+        // Update VolunteerProfile
+        const volunteerProfile = await VolunteerProfile.findOne({
+            where: { user_id: request.volunteer_id },
+            transaction: t
+        });
+
+        if (volunteerProfile) {
+            await volunteerProfile.update({ rating: parseFloat(newAverage) }, { transaction: t });
+        }
+
+        await t.commit();
+
+        // 🔔 Notify Volunteer
+        notifyUser(request.volunteer_id, {
+            type: 'request_completed',
+            title: 'تم تأكيد الإتمام! ⭐',
+            body: `لقد أكد المستفيد إنهاء الطلب بنجاح ومنحك تقييماً ${rating}/5! شكراً لجهودك.`,
+            requestId: request.id,
+            link: `/requests/${request.id}`,
+        });
+
+        return sendSuccess(res, 200, 'Request successfully completed and reviewed.', request);
+    } catch (error) {
+        await t.rollback();
         return sendError(res, 500, error);
     }
 };
@@ -308,4 +387,4 @@ const cancelRequest = async (req, res) => {
     }
 };
 
-module.exports = { createRequest, getMyRequests, getRequests, getNearbyRequests, getRequestById, acceptRequest, completeRequest, getMyAcceptedRequests, cancelRequest };
+module.exports = { createRequest, getMyRequests, getRequests, getNearbyRequests, getRequestById, acceptRequest, requestCompletion, confirmCompletion, getMyAcceptedRequests, cancelRequest };

@@ -10,7 +10,8 @@ const {
     getNearbyRequests,
     getRequestById,
     acceptRequest,
-    completeRequest,
+    requestCompletion,
+    confirmCompletion,
     getMyAcceptedRequests,
     cancelRequest,
 } = require('../controllers/requestController');
@@ -46,8 +47,11 @@ router.get('/:id', protect, getRequestById);
 // PATCH /api/requests/:id/accept   → volunteer accepts a pending request
 router.patch('/:id/accept', protect, authorize('volunteer'), acceptRequest);
 
-// PATCH /api/requests/:id/complete → mark request as completed
-router.patch('/:id/complete', protect, completeRequest);
+// Volunteer marks request as 'completion_requested'
+router.patch('/:id/request-completion', protect, authorize('volunteer', 'admin'), requestCompletion);
+
+// Beneficiary confirms completion and leaves a rating/review
+router.post('/:id/confirm-completion', protect, authorize('beneficiary', 'admin'), confirmCompletion);
 
 // PATCH /api/requests/:id/cancel   → beneficiary cancels a pending request
 router.patch('/:id/cancel', protect, authorize('beneficiary'), cancelRequest);

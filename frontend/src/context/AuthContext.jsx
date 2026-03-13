@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { getSocket, disconnectSocket } from '../services/socketService';
+import api from '../services/api';
 
 /**
  * AuthContext — global authentication state for Sanad.
@@ -61,6 +62,21 @@ export function AuthProvider({ children }) {
         }
     }, []);
 
+    // ── refreshProfile ─────────────────────────────────────────────────────────
+    const refreshProfile = useCallback(async () => {
+        if (!token) return;
+        try {
+            const res = await api.get('/users/me');
+            if (res.data?.data) {
+                const newUserData = res.data.data;
+                setUser(newUserData);
+                localStorage.setItem(USER_KEY, JSON.stringify(newUserData));
+            }
+        } catch (error) {
+            console.error('Failed to refresh profile', error);
+        }
+    }, [token]);
+
     // ── logout ────────────────────────────────────────────────────────────────
     const logout = useCallback(() => {
         // Cleanly tear down any active socket connection before dropping auth
@@ -77,7 +93,7 @@ export function AuthProvider({ children }) {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, token, login, logout, isLoggedIn: !!token, isLoading }}>
+        <AuthContext.Provider value={{ user, token, login, logout, refreshProfile, isLoggedIn: !!token, isLoading }}>
             {children}
         </AuthContext.Provider>
     );

@@ -9,8 +9,18 @@ export const adminService = {
      * جلب إحصائيات المنصة (admin overview analytics)
      */
     getStats: async () => {
-        const response = await api.get('/users/stats');
+        const response = await api.get('/admin/stats');
         return response.data; // { status, message, data: { users, requests, sos, recentUsers, recentRequests } }
+    },
+
+    getAllRequests: async (params = {}) => {
+        const response = await api.get('/admin/requests', { params });
+        return response.data;
+    },
+
+    getRequestMessages: async (requestId) => {
+        const response = await api.get(`/admin/requests/${requestId}/messages`);
+        return response.data;
     },
 
     /**

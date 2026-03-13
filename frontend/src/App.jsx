@@ -6,6 +6,8 @@ import GlobalWatermark from './components/layout/GlobalWatermark';
 import AnimatedBackground from './components/AnimatedBackground';
 import LoadingScreen from './components/LoadingScreen';
 import ProtectedRoute from './components/ProtectedRoute';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 import LandingPage from './pages/LandingPage';
 import HomePage from './pages/HomePage';
@@ -87,6 +89,7 @@ function App() {
                 {/* Catch-all */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              <ToastContainer position="bottom-right" theme="dark" />
             </NotificationProvider>
           </BrowserRouter>
         </AuthProvider>

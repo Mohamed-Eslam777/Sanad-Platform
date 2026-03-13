@@ -26,7 +26,7 @@ import NotificationToastStack from '../components/layout/NotificationToastStack'
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const { playBeep } = useAudioNotification();
 
   const [notifications, setNotifications] = useState([]);
@@ -66,10 +66,16 @@ export function NotificationProvider({ children }) {
     const socket = getSocket();
     if (!socket) return;
 
-    const handler = (notif) => addNotification(notif);
+    const handler = (notif) => {
+      addNotification(notif);
+      // Auto-refresh profile stats on relevant notification types
+      if (['request_completed', 'request_accepted', 'completion_requested'].includes(notif.type)) {
+         refreshProfile?.();
+      }
+    };
     socket.on('new_notification', handler);
     return () => socket.off('new_notification', handler);
-  }, [user, addNotification]);
+  }, [user, addNotification, refreshProfile]);
 
   return (
     <NotificationContext.Provider value={{ notifications, markAsRead, markAllAsRead }}>

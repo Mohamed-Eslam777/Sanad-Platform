@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { User, BeneficiaryProfile, VolunteerProfile } = require('../models');
+const { User, BeneficiaryProfile, VolunteerProfile, Request, SOSAlert, Message } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
 const { getIo } = require('../socketHandler');
 
@@ -14,6 +14,7 @@ const getAllUsers = async (req, res) => {
             search = '',
             role,
             status,
+            verification_status,
             page = 1,
             limit = 20,
         } = req.query;
@@ -38,21 +39,47 @@ const getAllUsers = async (req, res) => {
             where.status = status;
         }
 
+        // Filter by verification status
+        if (verification_status && ['unverified', 'pending', 'verified', 'rejected'].includes(verification_status)) {
+            where.verification_status = verification_status;
+        }
+
         const offset = (parseInt(page) - 1) * parseInt(limit);
 
         const { count, rows } = await User.findAndCountAll({
             where,
             attributes: { exclude: ['password_hash', 'reset_token', 'reset_token_expires'] },
+            include: [
+                { model: BeneficiaryProfile, as: 'beneficiaryProfile' },
+                { model: VolunteerProfile, as: 'volunteerProfile', attributes: { exclude: ['national_id'] } }
+            ],
             limit: parseInt(limit),
             offset,
             order: [['created_at', 'DESC']],
+            distinct: true, // Required when pagination is used with include
         });
+
+        const { Request, Review } = require('../models');
+        const usersWithCounts = await Promise.all(rows.map(async (u) => {
+            const userJson = u.toJSON();
+            if (userJson.role === 'volunteer' && userJson.volunteerProfile) {
+                const [completedCount, activeCount, totalReviews] = await Promise.all([
+                    Request.count({ where: { volunteer_id: userJson.id, status: 'completed' } }),
+                    Request.count({ where: { volunteer_id: userJson.id, status: ['accepted', 'in_progress', 'completion_requested'] } }),
+                    Review.count({ where: { reviewed_id: userJson.id } })
+                ]);
+                userJson.volunteerProfile.completed_requests = completedCount;
+                userJson.volunteerProfile.active_tasks = activeCount;
+                userJson.volunteerProfile.total_reviews = totalReviews;
+            }
+            return userJson;
+        }));
 
         return sendSuccess(res, 200, 'Users retrieved.', {
             total: count,
             page: parseInt(page),
             totalPages: Math.ceil(count / parseInt(limit)),
-            users: rows,
+            users: usersWithCounts,
         });
     } catch (error) {
         return sendError(res, 500, error);
@@ -109,8 +136,7 @@ const updateUserStatus = async (req, res) => {
  */
 const getStats = async (req, res) => {
     try {
-        // Use the same model imports already at the top
-        const { Request, SOSAlert } = require('../models');
+        // Use the global imports
 
         // User counts by role
         const totalUsers = await User.count();
@@ -206,4 +232,107 @@ const reviewIdentityVerification = async (req, res) => {
     }
 };
 
-module.exports = { getAllUsers, updateUserStatus, getStats, reviewIdentityVerification };
+/**
+ * @desc  Get all requests for the admin dashboard (with pagination & search)
+ * @route GET /api/admin/requests
+ * @access Private (admin only)
+ */
+const getAllRequestsAdmin = async (req, res) => {
+    try {
+        const { search = '', status, type, page = 1, limit = 20 } = req.query;
+        const where = {};
+
+        if (status && ['pending', 'accepted', 'in_progress', 'completed', 'cancelled'].includes(status)) {
+            where.status = status;
+        }
+
+        if (type && ['medical', 'financial', 'logistical'].includes(type)) {
+            where.type = type;
+        }
+
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+
+        const { count, rows } = await Request.findAndCountAll({
+            where,
+            include: [
+                { model: User, as: 'beneficiary', attributes: ['id', 'full_name', 'email', 'profile_picture'] },
+                { model: User, as: 'volunteer', attributes: ['id', 'full_name', 'email', 'profile_picture'] }
+            ],
+            limit: parseInt(limit),
+            offset,
+            order: [['created_at', 'DESC']],
+            distinct: true,
+        });
+
+        // Search in memory for now if search exists (or we can use advanced Sequelize Op.or on includes)
+        // For simplicity, we filter the rows if search string is provided
+        let filteredRows = rows;
+        if (search.trim()) {
+            const lowerSearch = search.toLowerCase();
+            filteredRows = rows.filter(r => 
+                (r.beneficiary && r.beneficiary.full_name.toLowerCase().includes(lowerSearch)) ||
+                (r.volunteer && r.volunteer.full_name.toLowerCase().includes(lowerSearch)) ||
+                (r.description && r.description.toLowerCase().includes(lowerSearch))
+            );
+        }
+
+        return sendSuccess(res, 200, 'Requests retrieved.', {
+            total: search.trim() ? filteredRows.length : count,
+            page: parseInt(page),
+            totalPages: Math.ceil((search.trim() ? filteredRows.length : count) / parseInt(limit)),
+            requests: filteredRows,
+        });
+    } catch (error) {
+        return sendError(res, 500, error.message);
+    }
+};
+
+/**
+ * @desc  Get all messages for a specific request (Admin Chat Oversight)
+ * @route GET /api/admin/requests/:requestId/messages
+ * @access Private (admin only)
+ */
+const getAdminRequestMessages = async (req, res) => {
+    try {
+        const { requestId } = req.params;
+
+        const request = await Request.findByPk(requestId);
+        if (!request) return sendError(res, 404, 'Request not found.');
+
+        const messages = await Message.findAll({
+            where: { request_id: requestId },
+            order: [['created_at', 'ASC']],
+        });
+
+        // Get sender details manually to attach names
+        const userIds = [...new Set(messages.map(m => m.sender_id))];
+        const users = await User.findAll({
+            where: { id: userIds },
+            attributes: ['id', 'full_name', 'role', 'profile_picture'],
+        });
+
+        const userMap = users.reduce((acc, u) => {
+            acc[u.id] = { full_name: u.full_name, role: u.role };
+            return acc;
+        }, {});
+
+        const enrichedMessages = messages.map(m => ({
+            ...m.toJSON(),
+            senderName: userMap[m.sender_id]?.full_name || 'مستخدم غير معروف',
+            senderRole: userMap[m.sender_id]?.role || 'غير محدد'
+        }));
+
+        return sendSuccess(res, 200, 'Messages retrieved for oversight.', enrichedMessages);
+    } catch (error) {
+        return sendError(res, 500, error.message);
+    }
+};
+
+module.exports = { 
+    getAllUsers, 
+    updateUserStatus, 
+    getStats, 
+    reviewIdentityVerification,
+    getAllRequestsAdmin,
+    getAdminRequestMessages
+};

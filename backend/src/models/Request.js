@@ -30,7 +30,7 @@ const Request = sequelize.define(
             allowNull: true,
         },
         status: {
-            type: DataTypes.ENUM('pending', 'accepted', 'in_progress', 'completed', 'cancelled'),
+            type: DataTypes.ENUM('pending', 'accepted', 'in_progress', 'completion_requested', 'completed', 'cancelled'),
             defaultValue: 'pending',
         },
         // Location where help is needed (used for geo-matching)

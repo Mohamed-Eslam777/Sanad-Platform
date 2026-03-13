@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
-const { getAllUsers, updateUserStatus, getStats, reviewIdentityVerification } = require('../controllers/adminController');
+const { getAllUsers, updateUserStatus, reviewIdentityVerification } = require('../controllers/adminController');
 const { getUserProfile, getMyProfile, updateProfile, verifyIdentity } = require('../controllers/userController');
 const multer = require('multer');
 const path = require('path');
@@ -55,8 +55,6 @@ router.post(
     verifyIdentity
 );
 
-// GET  /api/users/stats   → admin analytics dashboard data
-router.get('/stats', protect, authorize('admin'), getStats);
 
 // GET  /api/users         → admin: list all users (search/filter/pagination)
 router.get('/', protect, authorize('admin'), getAllUsers);

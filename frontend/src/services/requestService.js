@@ -50,15 +50,37 @@ export const requestService = {
         return response.data;
     },
 
-    // إكمال الطلب
-    completeRequest: async (id) => {
-        const response = await api.patch(`/requests/${id}/complete`);
+    // requestCompletion: requests for the current volunteer asking for finishing up
+    requestCompletion: async (reqId) => {
+        const response = await api.patch(`/requests/${reqId}/request-completion`);
         return response.data;
     },
 
-    // إلغاء طلب (خاص بالمستفيد ولا يعمل إلا في حالة pending)
+    // confirmCompletion: beneficiary rating and finalizing
+    confirmCompletion: async (reqId, ratingData) => {
+        const response = await api.post(`/requests/${reqId}/confirm-completion`, ratingData);
+        return response.data;
+    },
+
+    // إلغاء طلب (خاص بالمستفيد)
     cancelRequest: async (id) => {
         const response = await api.patch(`/requests/${id}/cancel`);
         return response.data;
     },
 };
+
+// Also export them individually so destructuring works in other files:
+export const {
+    createRequest,
+    getNearbyRequests,
+    getMyRequests,
+    getMyAcceptedRequests,
+    getAllRequests,
+    getRequestById,
+    acceptRequest,
+    requestCompletion,
+    confirmCompletion,
+    cancelRequest
+} = requestService;
+
+export default requestService;
