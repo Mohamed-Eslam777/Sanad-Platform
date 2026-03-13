@@ -12,9 +12,10 @@ import NotificationToastStack from '../components/layout/NotificationToastStack'
  * Provides global notification state and socket subscription for the Sanad app.
  *
  * Exposes (via useNotifications):
+ * Exposes (via useNotifications):
  *   notifications       — full notification list (up to 50, newest first)
- *   dismissNotification — (id) => void
- *   clearAll            — () => void
+ *   markAsRead          — (id) => void
+ *   markAllAsRead       — () => void
  *
  * Side effects rendered inside this provider:
  *   - NotificationBell overlay (fixed, top-left, only when logged in)
@@ -34,8 +35,9 @@ export function NotificationProvider({ children }) {
   /* ── Add a new notification (called by socket handler) ── */
   const addNotification = useCallback(
     (notif) => {
-      setNotifications((prev) => [notif, ...prev].slice(0, 50)); // keep last 50
-      setToasts((prev) => [...prev, notif]);
+      const newNotif = { ...notif, is_read: false };
+      setNotifications((prev) => [newNotif, ...prev].slice(0, 50)); // keep last 50
+      setToasts((prev) => [...prev, newNotif]);
       playBeep();
     },
     [playBeep],
@@ -46,13 +48,17 @@ export function NotificationProvider({ children }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  /* ── Dismiss a notification from the bell list ── */
-  const dismissNotification = useCallback((id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  /* ── Mark a single notification as read ── */
+  const markAsRead = useCallback((id) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+    );
   }, []);
 
-  /* ── Clear all notifications ── */
-  const clearAll = useCallback(() => setNotifications([]), []);
+  /* ── Mark all notifications as read ── */
+  const markAllAsRead = useCallback(() => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+  }, []);
 
   /* ── Subscribe to socket when user is logged in ── */
   useEffect(() => {
@@ -66,7 +72,7 @@ export function NotificationProvider({ children }) {
   }, [user, addNotification]);
 
   return (
-    <NotificationContext.Provider value={{ notifications, dismissNotification, clearAll }}>
+    <NotificationContext.Provider value={{ notifications, markAsRead, markAllAsRead }}>
       {/* Notification Bell icon — visible only when logged in */}
       {user && (
         <div
@@ -76,8 +82,8 @@ export function NotificationProvider({ children }) {
         >
           <NotificationBell
             notifications={notifications}
-            onDismiss={dismissNotification}
-            onClearAll={clearAll}
+            onMarkAsRead={markAsRead}
+            onMarkAllAsRead={markAllAsRead}
           />
         </div>
       )}

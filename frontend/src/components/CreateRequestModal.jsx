@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     X, Car, BookOpen, ShoppingBag, Ellipsis,
     MapPin, Calendar, FileText, Loader2, CheckCircle,
-    AlertCircle, Send, Sparkles
+    AlertCircle, Send, Sparkles, Wallet
 } from 'lucide-react';
 import { requestService } from '../services/requestService';
 
@@ -121,6 +121,7 @@ export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
         description: '',
         location_address: '',
         scheduled_time: '',
+        price: '',
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -128,7 +129,7 @@ export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
 
     useEffect(() => {
         if (isOpen) {
-            setForm({ type: 'transportation', description: '', location_address: '', scheduled_time: '' });
+            setForm({ type: 'transportation', description: '', location_address: '', scheduled_time: '', price: '' });
             setError('');
             setSuccess('');
         }
@@ -170,26 +171,26 @@ export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 z-50 bg-navy-950/85 backdrop-blur-xl"
+                        className="fixed inset-0 z-50 bg-[#0f1228]/80 backdrop-blur-md"
                     />
 
                     {/* ── Modal ── */}
                     <motion.div
                         key="cr-modal"
-                        initial={{ opacity: 0, scale: 0.94, y: 28 }}
+                        initial={{ opacity: 0, scale: 0.96, y: 15 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.96, y: 14 }}
-                        transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+                        exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
                         className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
                     >
                         <div
                             dir="rtl"
                             className="pointer-events-auto w-full max-w-lg overflow-hidden relative"
                             style={{
-                                background: 'linear-gradient(145deg, rgba(15,18,40,0.97) 0%, rgba(10,14,36,0.99) 100%)',
-                                border: '1px solid rgba(255,255,255,0.07)',
-                                borderRadius: '28px',
-                                boxShadow: '0 40px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(99,102,241,0.12), inset 0 1px 0 rgba(255,255,255,0.06)',
+                                background: 'linear-gradient(145deg, rgba(25,30,55,0.98) 0%, rgba(18,22,45,0.99) 100%)',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                borderRadius: '24px',
+                                boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)',
                             }}
                         >
                             {/* Top gradient edge light */}
@@ -345,6 +346,21 @@ export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
                                                 style={{ ...inputStyle, colorScheme: 'dark' }}
                                             />
                                             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                                        </div>
+                                    </FieldWrapper>
+
+                                    {/* ── Suggested Price ── */}
+                                    <FieldWrapper label="السعر المقترح أو التكلفة (اختياري)" icon={Wallet}>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                placeholder="مثال: 50 جنيه، حساب التكلفة عند الاستلام..."
+                                                value={form.price}
+                                                onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))}
+                                                className="w-full text-white text-sm rounded-2xl px-4 py-3.5 pr-11 outline-none transition-all placeholder-gray-600 focus:border-royal-500/50 focus:ring-2 focus:ring-royal-500/15"
+                                                style={inputStyle}
+                                            />
+                                            <Wallet className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-royal-400 pointer-events-none" />
                                         </div>
                                     </FieldWrapper>
 

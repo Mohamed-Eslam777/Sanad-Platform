@@ -11,7 +11,7 @@ const { notifyUser } = require('../ioInstance');
  */
 const createRequest = async (req, res) => {
     try {
-        const { type, description, location_lat, location_lng, location_address, scheduled_time } = req.body;
+        const { type, description, location_lat, location_lng, location_address, scheduled_time, price } = req.body;
 
         const request = await Request.create({
             beneficiary_id: req.user.id,
@@ -20,6 +20,7 @@ const createRequest = async (req, res) => {
             location_lat,
             location_lng,
             location_address,
+            price,
             scheduled_time,
         });
 

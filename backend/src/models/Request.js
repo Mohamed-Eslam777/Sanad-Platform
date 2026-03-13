@@ -46,6 +46,10 @@ const Request = sequelize.define(
             type: DataTypes.STRING(255),
             allowNull: true,
         },
+        price: {
+            type: DataTypes.STRING(50),
+            allowNull: true,
+        },
         scheduled_time: {
             type: DataTypes.DATE,
             allowNull: true,
