@@ -111,11 +111,13 @@ export default function RequestCard({
 }
 
 /* ── Stagger animation variants for parent lists ── */
+// eslint-disable-next-line react-refresh/only-export-components
 export const listContainerVariants = {
     hidden: {},
     visible: { transition: { staggerChildren: 0.06 } },
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const listItemVariants = {
     hidden: { opacity: 0, y: 12 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },

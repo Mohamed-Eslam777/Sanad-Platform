@@ -149,6 +149,7 @@ export function NotificationProvider({ children }) {
 }
 
 /** Convenience hook — throws if used outside of NotificationProvider */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useNotifications() {
   const ctx = useContext(NotificationContext);
   if (!ctx) throw new Error('useNotifications must be used within a NotificationProvider');
