@@ -61,7 +61,7 @@ const TYPE_CONFIG = {
     },
 };
 
-export default function Toast({ id, type = 'info', title, body, duration = 5000, onClose }) {
+export default function Toast({ type = 'info', title, body, duration = 5000, onClose }) {
     const config = TYPE_CONFIG[type] || TYPE_CONFIG.info;
     const Icon = config.icon;
 

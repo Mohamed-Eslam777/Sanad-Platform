@@ -119,7 +119,7 @@ const InputField = forwardRef(({
                                 ? dir === 'rtl' ? 'right-11' : 'left-11'
                                 : dir === 'rtl' ? 'right-4' : 'left-4',
                             // Float up when focused or filled
-                            isFloating || 'peer-focus:' // CSS fallback via peer
+                            isFloating // CSS fallback via peer
                                 ? 'top-1.5 text-[10px] font-bold tracking-wider uppercase'
                                 : 'top-1/2 -translate-y-1/2 text-sm',
                             'peer-focus:top-1.5 peer-focus:text-[10px] peer-focus:font-bold peer-focus:tracking-wider peer-focus:uppercase',

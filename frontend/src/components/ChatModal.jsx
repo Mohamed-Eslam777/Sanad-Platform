@@ -11,7 +11,6 @@ import api from '../services/api';
 import { getSocket } from '../services/socketService';
 import ConfirmCompletionModal from './requests/ConfirmCompletionModal';
 import { requestCompletion, confirmCompletion } from '../services/requestService';
-import { toast } from 'react-toastify';
 
 // Helper to get absolute upload URL
 const getUploadUrl = (url) => {
@@ -171,7 +170,7 @@ function DateDivider({ label }) {
 }
 
 /* ─── ChatModal ────────────────────────────────────────────────────────────── */
-function ChatModal({ isOpen, onClose, requestId, requestType, requestStatus, otherPartyRole, currentUserId, currentUserName, otherPartyName, onStatusChange }) {
+function ChatModal({ isOpen, onClose, requestId, requestStatus, otherPartyRole, currentUserId, currentUserName, otherPartyName, onStatusChange, manageRoomState = true }) {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
@@ -248,7 +247,9 @@ function ChatModal({ isOpen, onClose, requestId, requestType, requestStatus, oth
 
         if (!socket) return;
 
-        socket.emit('join_room', requestId);
+        if (manageRoomState) {
+            socket.emit('join_room', requestId);
+        }
         setIsConnected(socket.connected);
 
         const onConnect = () => setIsConnected(true);
@@ -295,7 +296,9 @@ function ChatModal({ isOpen, onClose, requestId, requestType, requestStatus, oth
         setTimeout(() => inputRef.current?.focus(), 200);
 
         return () => {
-            socket.emit('leave_room', requestId);
+            if (manageRoomState) {
+                socket.emit('leave_room', requestId);
+            }
             socket.off('connect', onConnect);
             socket.off('disconnect', onDisconnect);
             socket.off('receive_message', onReceiveMessage);

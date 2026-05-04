@@ -13,7 +13,6 @@ export default function CustomAudioPlayer({ src }) {
     const audioRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
-    const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
 
     // Safely unmount/pause without throwing uncaught promises
@@ -53,12 +52,6 @@ export default function CustomAudioPlayer({ src }) {
         if (audioRef.current) {
             setCurrentTime(audioRef.current.currentTime);
             setProgress((audioRef.current.currentTime / audioRef.current.duration) * 100 || 0);
-        }
-    };
-
-    const handleLoadedMetadata = () => {
-        if (audioRef.current) {
-            setDuration(audioRef.current.duration);
         }
     };
 
@@ -129,7 +122,6 @@ export default function CustomAudioPlayer({ src }) {
                 ref={audioRef}
                 src={src}
                 onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
                 onEnded={handleEnded}
                 className="hidden"
             />

@@ -65,7 +65,9 @@ export default function Sidebar({ user, onLogout, currentPath = '/' }) {
 
                     {/* Navigation Links */}
                     <nav className="p-4 space-y-1">
-                        {NAV_LINKS.map(({ to, label, icon: Icon }) => {
+                        {NAV_LINKS.map((link) => {
+                            const { to, label } = link;
+                            const Icon = link.icon;
                             const isActive = currentPath === to;
                             return (
                                 <motion.div

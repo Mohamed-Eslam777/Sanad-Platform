@@ -15,7 +15,6 @@
  *   showType         — boolean, show type emoji (default true)
  */
 import React from 'react';
-import { motion } from 'framer-motion';
 import { MapPin, Calendar } from 'lucide-react';
 import Card from '../../../components/common/Card';
 import StatusBadge from '../../../components/common/StatusBadge';
