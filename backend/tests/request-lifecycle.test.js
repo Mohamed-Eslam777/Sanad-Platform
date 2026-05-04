@@ -70,11 +70,20 @@ describe('Request lifecycle', () => {
 
     expect(acceptRes.statusCode).toBe(200);
 
-    const completeRes = await request(app)
-      .patch(`/api/requests/${requestId}/complete`)
-      .set('Authorization', `Bearer ${beneficiaryToken}`);
+    // Volunteer requests completion first
+    const requestCompletionRes = await request(app)
+      .patch(`/api/requests/${requestId}/request-completion`)
+      .set('Authorization', `Bearer ${volunteerToken}`);
 
-    expect(completeRes.statusCode).toBe(200);
+    expect(requestCompletionRes.statusCode).toBe(200);
+
+    // Beneficiary confirms completion with rating
+    const confirmRes = await request(app)
+      .post(`/api/requests/${requestId}/confirm-completion`)
+      .set('Authorization', `Bearer ${beneficiaryToken}`)
+      .send({ rating: 5, comment: 'تمت المساعدة بنجاح' });
+
+    expect(confirmRes.statusCode).toBe(200);
   });
 });
 

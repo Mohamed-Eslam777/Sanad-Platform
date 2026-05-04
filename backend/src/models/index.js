@@ -6,6 +6,7 @@ const Request = require('./Request');
 const Message = require('./Message');
 const Review = require('./Review');
 const SOSAlert = require('./SOSAlert');
+const Notification = require('./Notification');
 
 // ─── Associations ──────────────────────────────────────────────────────────────
 
@@ -46,4 +47,8 @@ Review.belongsTo(User, { foreignKey: 'reviewed_id', as: 'reviewed' });
 User.hasMany(SOSAlert, { foreignKey: 'user_id', as: 'sosAlerts' });
 SOSAlert.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
-module.exports = { sequelize, User, BeneficiaryProfile, VolunteerProfile, Request, Message, Review, SOSAlert };
+// User ↔ Notifications (recipient)
+User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
+Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+module.exports = { sequelize, User, BeneficiaryProfile, VolunteerProfile, Request, Message, Review, SOSAlert, Notification };

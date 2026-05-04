@@ -13,6 +13,7 @@
  */
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import { Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Sidebar from '../components/layout/Sidebar';
 import BeneficiaryDashboard from '../features/dashboard/BeneficiaryDashboard';
@@ -20,6 +21,11 @@ import VolunteerDashboard from '../features/dashboard/VolunteerDashboard';
 
 export default function HomePage() {
     const { user, logout } = useAuth();
+
+    // Admins have their own dedicated dashboard — redirect them there
+    if (user?.role === 'admin') {
+        return <Navigate to="/admin" replace />;
+    }
 
     return (
         <div dir="rtl" className="min-h-screen flex">

@@ -3,7 +3,8 @@ const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
 const { getAllUsers, updateUserStatus, reviewIdentityVerification } = require('../controllers/adminController');
-const { getUserProfile, getMyProfile, updateProfile, verifyIdentity } = require('../controllers/userController');
+const { getUserProfile, getMyProfile, updateProfile, verifyIdentity, updateLocation } = require('../controllers/userController');
+const { updateLocationValidators, validate } = require('../utils/validators');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -42,6 +43,9 @@ router.get('/me', protect, getMyProfile);
 
 // PUT  /api/users/me      → update own profile
 router.put('/me', protect, updateProfile);
+
+// PATCH /api/users/location → update volunteer location for geo-discovery
+router.patch('/location', protect, authorize('volunteer'), updateLocationValidators, validate, updateLocation);
 
 // POST /api/users/verify-identity → User uploads KYC documents
 router.post(

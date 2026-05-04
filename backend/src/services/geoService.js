@@ -1,50 +1,73 @@
 /**
- * Geo Service — geospatial utilities for volunteer matching.
+ * geoService.js — Database-level geospatial query service.
  *
- * The Haversine formula calculates the great-circle distance between two
- * points on a sphere given their latitude and longitude coordinates.
- * Used to find volunteers within a radius of a request's location.
+ * Uses MySQL's native ST_Distance_Sphere function for blazing fast
+ * proximity queries against the SPATIALLY INDEXED `location` column
+ * on Volunteer_Profiles.
  *
- * SECURITY: haversineSQLExpression now returns a parameterised literal
- * (using Sequelize replacements) so lat/lng values are NEVER interpolated
- * directly into SQL strings, preventing SQL injection.
+ * ALL distance filtering happens at the DB level — no in-memory loops.
  */
+'use strict';
 
-const { literal } = require('sequelize');
-
-const EARTH_RADIUS_KM = 6371;
-
-const toRadians = (degrees) => (degrees * Math.PI) / 180;
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const logger = require('../utils/logger');
 
 /**
- * Calculates the JS-side Haversine distance between two geo-coordinates.
- */
-const haversineDistance = (lat1, lng1, lat2, lng2) => {
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return EARTH_RADIUS_KM * c;
-};
-
-/**
- * Returns the SQL Haversine expression as a plain string with NAMED placeholders.
- * The caller must pass `{ replacements: { lat, lng } }` to sequelize.query().
+ * Find available volunteers within a given radius of a coordinate.
  *
- * Example usage:
- *   const expr = haversineSQLString();
- *   const [rows] = await sequelize.query(
- *     `SELECT *, (${expr}) AS distance_km FROM Requests WHERE status = 'pending' HAVING distance_km <= :radius ORDER BY distance_km ASC`,
- *     { replacements: { lat: 30.04, lng: 31.23, radius: 5 }, type: QueryTypes.SELECT }
- *   );
+ * @param {number} lat  — Latitude of the SOS origin.
+ * @param {number} lng  — Longitude of the SOS origin.
+ * @param {number} [radiusMeters=10000] — Search radius in metres (default: 10 km).
+ * @returns {Promise<Array>} — List of nearby volunteer objects with distance_m.
  */
-const haversineSQLString = () =>
-  `(${EARTH_RADIUS_KM} * ACOS(
-        COS(RADIANS(:lat)) * COS(RADIANS(location_lat)) *
-        COS(RADIANS(location_lng) - RADIANS(:lng)) +
-        SIN(RADIANS(:lat)) * SIN(RADIANS(location_lat))
-    ))`;
+async function findNearbyVolunteers(lat, lng, radiusMeters = 10000) {
+  const query = `
+    SELECT
+      vp.id               AS profile_id,
+      vp.user_id,
+      u.full_name,
+      u.profile_picture,
+      vp.latitude,
+      vp.longitude,
+      vp.average_rating,
+      vp.total_reviews,
+      ROUND(
+        6371000 * ACOS(
+          COS(RADIANS(:lat)) * COS(RADIANS(vp.latitude)) *
+          COS(RADIANS(vp.longitude) - RADIANS(:lng)) +
+          SIN(RADIANS(:lat)) * SIN(RADIANS(vp.latitude))
+        )
+      ) AS distance_m
+    FROM Volunteer_Profiles vp
+    INNER JOIN Users u ON u.id = vp.user_id
+    WHERE
+      vp.latitude IS NOT NULL
+      AND vp.longitude IS NOT NULL
+      AND vp.is_available = 1
+      AND u.status = 'active'
+      AND u.role   = 'volunteer'
+    HAVING distance_m <= :radiusMeters
+    ORDER BY distance_m ASC
+    LIMIT 50;
+  `;
 
-module.exports = { haversineDistance, haversineSQLString };
+  try {
+    const volunteers = await sequelize.query(query, {
+      replacements: {
+        lat,
+        lng,
+        radiusMeters,
+      },
+      type: QueryTypes.SELECT,
+    });
+
+    logger.info(`[Geo] Found ${volunteers.length} volunteers within ${radiusMeters}m of (${lat}, ${lng}).`);
+    return volunteers;
+  } catch (err) {
+    logger.error(`[Geo] ST_Distance_Sphere query failed: ${err.message}`);
+    throw err;
+  }
+}
+
+module.exports = { findNearbyVolunteers };

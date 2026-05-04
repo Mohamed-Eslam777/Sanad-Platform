@@ -62,7 +62,8 @@ const getUserProfile = async (req, res) => {
         });
 
         if (!user) return sendError(res, 404, 'User not found.');
-        return sendSuccess(res, 200, 'User profile.', await toUserDTOAsync(user));
+        const dto = await toUserDTOAsync(user);
+        return sendSuccess(res, 200, 'User profile.', dto);
     } catch (error) {
         return sendError(res, 500, error.message);
     }
@@ -82,7 +83,8 @@ const getMyProfile = async (req, res) => {
                 { model: VolunteerProfile, as: 'volunteerProfile' },
             ],
         });
-        return sendSuccess(res, 200, 'Your profile.', await toUserDTOAsync(user));
+        const dto = await toUserDTOAsync(user);
+        return sendSuccess(res, 200, 'Your profile.', dto);
     } catch (error) {
         return sendError(res, 500, error.message);
     }
@@ -171,5 +173,24 @@ const verifyIdentity = async (req, res) => {
         return sendError(res, 500, error.message);
     }
 };
+/**
+ * @desc    Update volunteer's geographical location
+ * @route   PATCH /api/users/location
+ * @access  Private (volunteer only)
+ */
+const updateLocation = async (req, res) => {
+    try {
+        const { latitude, longitude } = req.body;
+        
+        await VolunteerProfile.update(
+            { latitude, longitude },
+            { where: { user_id: req.user.id } }
+        );
+        
+        return sendSuccess(res, 200, 'Location updated successfully.');
+    } catch (error) {
+        return sendError(res, 500, error.message);
+    }
+};
 
-module.exports = { getUserProfile, getMyProfile, updateProfile, verifyIdentity };
+module.exports = { getUserProfile, getMyProfile, updateProfile, verifyIdentity, updateLocation };

@@ -14,6 +14,7 @@
 const jwt = require('jsonwebtoken');
 const { Message, Request, User } = require('./models');
 const { notifyUser } = require('./ioInstance');
+const logger = require('./utils/logger');
 
 /* ─────────────────────────────────────────────────────────────────────────────
    JWT authentication middleware
@@ -46,7 +47,12 @@ function registerSocketEvents(io, socket) {
     // ── Auto-join private user room for personal notifications ───────────────
     const userRoom = `user_${userId}`;
     socket.join(userRoom);
-    console.log(`🔌 Socket connected: ${userName} → joined private room ${userRoom}`);
+    
+    if (socket.user.role === 'volunteer') {
+        socket.join('volunteers');
+    }
+    
+    logger.info(`🔌 Socket connected: ${userName} → joined private room ${userRoom}`);
 
     // ── join_room (chat) ──────────────────────────────────────────────────────
     socket.on('join_room', async (requestId) => {
@@ -62,11 +68,11 @@ function registerSocketEvents(io, socket) {
 
             const roomName = `request_${requestId}`;
             socket.join(roomName);
-            console.log(`📨 ${userName} joined chat room ${roomName}`);
+            logger.info(`📨 ${userName} joined chat room ${roomName}`);
 
             socket.to(roomName).emit('user_joined', { userId, name: userName });
         } catch (err) {
-            console.error('join_room error:', err.message);
+            logger.error(`join_room error: ${err.message}`);
             socket.emit('error_message', { message: 'Failed to join room.' });
         }
     });
@@ -75,7 +81,7 @@ function registerSocketEvents(io, socket) {
     socket.on('leave_room', (requestId) => {
         if (!requestId) return;
         socket.leave(`request_${requestId}`);
-        console.log(`👋 ${userName} left room request_${requestId}`);
+        logger.info(`👋 ${userName} left room request_${requestId}`);
     });
 
     // ── send_message ──────────────────────────────────────────────────────────
@@ -93,8 +99,8 @@ function registerSocketEvents(io, socket) {
                 userId === request.beneficiary_id || userId === request.volunteer_id;
             if (!isParticipant) return socket.emit('error_message', { message: 'Not authorized.' });
 
-            if (!['accepted', 'in_progress'].includes(request.status)) {
-                return socket.emit('error_message', { message: 'Chat is only open for accepted/in-progress requests.' });
+            if (!['accepted', 'in_progress', 'completion_requested'].includes(request.status)) {
+                return socket.emit('error_message', { message: 'Chat is only open for accepted, in-progress, or completion-requested requests.' });
             }
 
             // Persist to DB
@@ -147,7 +153,7 @@ function registerSocketEvents(io, socket) {
                 }
             }
         } catch (err) {
-            console.error('send_message error:', err.message);
+            logger.error(`send_message error: ${err.message}`);
             socket.emit('error_message', { message: 'Failed to send message.' });
         }
     });
@@ -161,6 +167,29 @@ function registerSocketEvents(io, socket) {
     socket.on('stop_typing', ({ requestId }) => {
         if (!requestId) return;
         socket.to(`request_${requestId}`).emit('stop_typing', { userId });
+    });
+
+    // ── update_location ────────────────────────────────────────────────────────
+    socket.on('update_location', async (data) => {
+        try {
+            const { requestId, lat, lng } = data || {};
+            if (!requestId || !lat || !lng) return;
+
+            const request = await Request.findByPk(requestId);
+            if (!request) return;
+
+            // Only the assigned volunteer can broadcast location
+            if (userId !== request.volunteer_id) return;
+
+            // Tracking is only allowed when status is in_progress
+            if (request.status !== 'in_progress') return;
+
+            const roomName = `request_${requestId}`;
+            // Broadcast the new coordinates to everyone else in the room (the beneficiary)
+            socket.to(roomName).emit('volunteer_location_updated', { lat, lng });
+        } catch (err) {
+            logger.error(`update_location error: ${err.message}`);
+        }
     });
 
     // ── mark_messages_read ────────────────────────────────────────────────────
@@ -205,16 +234,16 @@ function registerSocketEvents(io, socket) {
                     readByUserId: userId,
                     senderIdOfReadMessages: otherPartyId,
                 });
-                console.log(`👁️ ${userName} marked ${updatedCount} messages as read in room ${roomName}`);
+                logger.info(`👁️ ${userName} marked ${updatedCount} messages as read in room ${roomName}`);
             }
         } catch (err) {
-            console.error('mark_messages_read error:', err.message);
+            logger.error(`mark_messages_read error: ${err.message}`);
         }
     });
 
     // ── disconnect ─────────────────────────────────────────────────────────────
     socket.on('disconnect', (reason) => {
-        console.log(`🔌 Socket disconnected: ${userName} (${reason})`);
+        logger.info(`🔌 Socket disconnected: ${userName} (${reason})`);
     });
 }
 

@@ -102,18 +102,6 @@ const inputStyle = {
     boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.25)',
 };
 
-/* ─── Geolocation helper ───────────────────────────────────────────────────── */
-const getCoords = () =>
-    new Promise((resolve) => {
-        const FALLBACK = { lat: 30.0444, lng: 31.2357 };
-        const timer = setTimeout(() => resolve(FALLBACK), 3000);
-        if (!navigator.geolocation) { clearTimeout(timer); return resolve(FALLBACK); }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => { clearTimeout(timer); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
-            () => { clearTimeout(timer); resolve(FALLBACK); },
-        );
-    });
-
 /* ─── Main Component ───────────────────────────────────────────────────────── */
 export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
     const [form, setForm] = useState({
@@ -126,12 +114,37 @@ export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [coords, setCoords] = useState(null);
+    const [loadingLocation, setLoadingLocation] = useState(false);
+
+    const fetchLocation = () => {
+        setLoadingLocation(true);
+        setError('');
+        if (!navigator.geolocation) {
+            setError('يجب تفعيل خدمات الموقع (GPS) لإضافة طلب');
+            setLoadingLocation(false);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                setLoadingLocation(false);
+            },
+            () => {
+                setError('يجب تفعيل خدمات الموقع (GPS) لإضافة طلب');
+                setLoadingLocation(false);
+            },
+            { enableHighAccuracy: true }
+        );
+    };
 
     useEffect(() => {
         if (isOpen) {
             setForm({ type: 'transportation', description: '', location_address: '', scheduled_time: '', price: '' });
             setError('');
             setSuccess('');
+            setCoords(null);
+            fetchLocation();
         }
     }, [isOpen]);
 
@@ -141,14 +154,17 @@ export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
             setError('يرجى تعبئة وصف الطلب والموقع.');
             return;
         }
+        if (!coords) {
+            setError('يجب تفعيل خدمات الموقع (GPS) لإضافة طلب');
+            return;
+        }
         setError('');
         setLoading(true);
         try {
-            const { lat, lng } = await getCoords();
             await requestService.createRequest({
                 ...form,
-                location_lat: lat,
-                location_lng: lng,
+                location_lat: coords.lat,
+                location_lng: coords.lng,
                 scheduled_time: form.scheduled_time || null,
             });
             setSuccess('تم إرسال طلبك بنجاح! سيتواصل معك متطوع قريباً.');
@@ -328,10 +344,23 @@ export default function CreateRequestModal({ isOpen, onClose, onSuccess }) {
                                                 placeholder="مثال: شارع التحرير، القاهرة"
                                                 value={form.location_address}
                                                 onChange={(e) => setForm((p) => ({ ...p, location_address: e.target.value }))}
-                                                className="w-full text-white text-sm rounded-2xl px-4 py-3.5 outline-none transition-all placeholder-gray-600 focus:border-royal-500/50 focus:ring-2 focus:ring-royal-500/15"
+                                                className="w-full text-white text-sm rounded-2xl pl-4 pr-32 py-3.5 outline-none transition-all placeholder-gray-600 focus:border-royal-500/50 focus:ring-2 focus:ring-royal-500/15"
                                                 style={inputStyle}
                                             />
                                             <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                                            <button
+                                                type="button"
+                                                onClick={fetchLocation}
+                                                disabled={loadingLocation}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                                style={{
+                                                    background: 'rgba(99,102,241,0.15)',
+                                                    border: '1px solid rgba(99,102,241,0.3)',
+                                                }}
+                                            >
+                                                {loadingLocation ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                                                تحديد موقعي
+                                            </button>
                                         </div>
                                     </FieldWrapper>
 

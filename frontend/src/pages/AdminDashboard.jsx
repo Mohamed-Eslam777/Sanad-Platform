@@ -260,7 +260,10 @@ export default function AdminDashboard() {
             if (!silent) setLoadingAlerts(true);
             const res = await api.get('/sos');
             setAlerts(res.data.data || []);
-        } catch { /* silent */ }
+        } catch {
+            // Only notify on non-silent (initial) fetches; polling failures are ignored silently.
+            if (!silent) showToast('فشل في جلب نداءات SOS. تحقق من الاتصال.', 'error');
+        }
         finally { if (!silent) setLoadingAlerts(false); }
     }, []);
 
@@ -270,7 +273,9 @@ export default function AdminDashboard() {
             const res = await adminService.getAllUsers({ status: 'active', limit: 100 });
             const pendingUsers = (res.data.users || []).filter(u => u.verification_status === 'pending');
             setVerifications(pendingUsers);
-        } catch { /* silent */ }
+        } catch {
+            if (!silent) showToast('فشل في جلب طلبات التوثيق. تحقق من الاتصال.', 'error');
+        }
         finally { if (!silent) setLoadingVerifications(false); }
     }, []);
 
@@ -294,9 +299,9 @@ export default function AdminDashboard() {
     }, [requestSearch, requestStatusFilter, requestTypeFilter, requestPage]);
 
     // ────────── EFFECTS ──────────
+    // Initial data load + SOS/verification polling (stable deps only)
     useEffect(() => {
         fetchStats();
-        fetchUsers();
         fetchAlerts(false);
         fetchVerifications(false);
         const interval = setInterval(() => {
@@ -304,7 +309,13 @@ export default function AdminDashboard() {
             fetchVerifications(true);
         }, POLL_INTERVAL);
         return () => clearInterval(interval);
-    }, [fetchStats, fetchUsers, fetchAlerts, fetchVerifications]);
+    }, [fetchStats, fetchAlerts, fetchVerifications]);
+
+    // Initial users fetch (subsequent fetches handled by the debounced effect below)
+    useEffect(() => {
+        fetchUsers();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (activeTab === 'overview') {
@@ -1035,8 +1046,8 @@ export default function AdminDashboard() {
                                                 <FileImage className="w-4 h-4 text-royal-400" /> {doc.title}
                                             </h4>
                                             <div className="aspect-[4/3] bg-glass-heavy border border-glass-border rounded-xl overflow-hidden relative group">
-                                                <img src={process.env.REACT_APP_API_URL?.replace('/api', '') + doc.url} alt={doc.title} className="w-full h-full object-cover" />
-                                                <a href={process.env.REACT_APP_API_URL?.replace('/api', '') + doc.url} target="_blank" rel="noreferrer" 
+                                                <img src={import.meta.env.VITE_API_URL?.replace('/api', '') + doc.url} alt={doc.title} className="w-full h-full object-cover" />
+                                                <a href={import.meta.env.VITE_API_URL?.replace('/api', '') + doc.url} target="_blank" rel="noreferrer" 
                                                    className="absolute inset-0 bg-navy-900/80 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm cursor-pointer">
                                                     <ExternalLink className="w-8 h-8 text-white mb-2" />
                                                     <span className="text-white font-bold text-sm">عرض بالحجم الكامل</span>
@@ -1185,7 +1196,11 @@ export default function AdminDashboard() {
                                                 </div>
                                                 <div>
                                                     <p className="text-xs font-bold text-gray-400 mb-1">متوسط التقييم</p>
-                                                    <p className="text-lg font-black text-warning-400">{selectedUserDetail.volunteerProfile.average_rating || 'جديد'} ⭐</p>
+                                                    <p className="text-lg font-black text-warning-400">
+                                                        {Number(selectedUserDetail.volunteerProfile.average_rating) > 0 
+                                                            ? Number(selectedUserDetail.volunteerProfile.average_rating).toFixed(1) 
+                                                            : 'جديد'} ⭐
+                                                    </p>
                                                 </div>
                                             </div>
                                         </div>

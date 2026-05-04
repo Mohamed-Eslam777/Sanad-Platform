@@ -1,6 +1,9 @@
 const nodemailer = require('nodemailer');
 const { SOSAlert, User } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
+const { findNearbyVolunteers } = require('../services/geoService');
+const { getIO } = require('../ioInstance');
+const logger = require('../utils/logger');
 
 // ── SOS alert mail transport (lazy singleton) ─────────────────────────────────
 let sosMailTransport = null;
@@ -30,7 +33,8 @@ const getSOSMailTransport = () => {
 };
 
 /**
- * @desc    Trigger an SOS alert
+ * @desc    Trigger an SOS alert — finds nearby volunteers via ST_Distance_Sphere
+ *          and broadcasts the alert to them in real-time.
  * @route   POST /api/sos
  * @access  Private
  */
@@ -38,6 +42,7 @@ const triggerSOS = async (req, res) => {
     try {
         const { latitude, longitude, message } = req.body;
 
+        // 1. Persist the SOS alert
         const alert = await SOSAlert.create({
             user_id: req.user.id,
             latitude,
@@ -45,7 +50,48 @@ const triggerSOS = async (req, res) => {
             message,
         });
 
-        // Notify admins via email if SMTP + ADMIN_ALERT_EMAIL are configured
+        // 2. Find nearby volunteers via DB-level ST_Distance_Sphere (≤ 10 km)
+        let nearbyVolunteers = [];
+        if (latitude && longitude) {
+            try {
+                nearbyVolunteers = await findNearbyVolunteers(
+                    parseFloat(latitude),
+                    parseFloat(longitude),
+                    10000 // 10 km radius
+                );
+            } catch (geoErr) {
+                logger.warn(`[SOS] Geo query failed, broadcasting to no one: ${geoErr.message}`);
+            }
+        }
+
+        // 3. Broadcast real-time SOS alert to each nearby volunteer's private room
+        const io = getIO();
+        if (io && nearbyVolunteers.length > 0) {
+            const sosPayload = {
+                id: alert.id,
+                type: 'sos_alert',
+                title: '🚨 نداء استغاثة قريب!',
+                body: message || 'شخص بحاجة للمساعدة الفورية بالقرب منك.',
+                latitude,
+                longitude,
+                user: {
+                    id: req.user.id,
+                    full_name: req.user.full_name,
+                },
+                timestamp: new Date().toISOString(),
+            };
+
+            for (const vol of nearbyVolunteers) {
+                io.to(`user_${vol.user_id}`).emit('sos_broadcast', {
+                    ...sosPayload,
+                    distance_m: vol.distance_m,
+                });
+            }
+
+            logger.info(`[SOS] Alert #${alert.id} broadcast to ${nearbyVolunteers.length} nearby volunteers.`);
+        }
+
+        // 4. Notify admins via email if SMTP + ADMIN_ALERT_EMAIL are configured
         try {
             const transport = getSOSMailTransport();
             const to = process.env.ADMIN_ALERT_EMAIL;
@@ -64,18 +110,19 @@ const triggerSOS = async (req, res) => {
                                 ? `<p><strong>الموقع التقريبي:</strong> <a href="https://www.google.com/maps?q=${latitude},${longitude}" target="_blank" rel="noopener noreferrer">عرض على الخرائط</a></p>`
                                 : '<p><strong>الموقع:</strong> غير متوفر (لم تتم الموافقة على مشاركة الموقع)</p>'
                         }
+                        <p><strong>متطوعون قريبون تم إشعارهم:</strong> ${nearbyVolunteers.length}</p>
                         <p>يمكنك عرض جميع نداءات الاستغاثة من خلال لوحة تحكم المشرف في سَنَد.</p>
                     `,
                 });
             }
         } catch (mailError) {
-            if (process.env.NODE_ENV !== 'production') {
-                // eslint-disable-next-line no-console
-                console.error('[Sanad] Failed to send SOS email:', mailError.message);
-            }
+            logger.error(`[SOS] Failed to send SOS email: ${mailError.message}`);
         }
 
-        return sendSuccess(res, 201, '🚨 SOS alert has been triggered. Help is on the way.', alert);
+        return sendSuccess(res, 201, '🚨 SOS alert has been triggered. Help is on the way.', {
+            alert,
+            nearbyVolunteersCount: nearbyVolunteers.length,
+        });
     } catch (error) {
         return sendError(res, 500, error.message);
     }

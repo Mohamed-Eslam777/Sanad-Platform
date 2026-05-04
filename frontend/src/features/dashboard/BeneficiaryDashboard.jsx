@@ -14,10 +14,10 @@
  *   - Modal-based cancel confirmation (replaces window.confirm)
  *   - Staggered list animation via Framer Motion
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { List, Clock, CheckCircle, Plus, Inbox, X, Loader2 } from 'lucide-react';
+import { List, Clock, CheckCircle, Plus, Inbox, X, Loader2, AlertCircle } from 'lucide-react';
 import { requestService } from '../../services/requestService';
 
 import Button from '../../components/common/Button';
@@ -42,6 +42,7 @@ export default function BeneficiaryDashboard({ user }) {
     const [cancelTarget, setCancelTarget] = useState(null); // request id to cancel
     const [cancellingId, setCancellingId] = useState(null);
     const [cancelError, setCancelError] = useState(null);
+    const [fetchError, setFetchError] = useState(null);
 
     useEffect(() => {
         fetchRequests();
@@ -50,10 +51,11 @@ export default function BeneficiaryDashboard({ user }) {
     const fetchRequests = async () => {
         try {
             setLoading(true);
+            setFetchError(null);
             const res = await requestService.getMyRequests();
             setRequests(res.data || []);
         } catch {
-            /* handled silently */
+            setFetchError('فشل في جلب طلباتك. يرجى التحقق من الاتصال.');
         } finally {
             setLoading(false);
         }
@@ -149,8 +151,26 @@ export default function BeneficiaryDashboard({ user }) {
                     </div>
                 )}
 
+                {/* ── Error state ── */}
+                {!loading && fetchError && (
+                    <EmptyState
+                        icon={AlertCircle}
+                        title="عذراً، حدث خطأ"
+                        subtitle={fetchError}
+                        action={
+                            <Button
+                                variant="outline"
+                                onClick={fetchRequests}
+                                size="sm"
+                            >
+                                المحاولة مرة أخرى
+                            </Button>
+                        }
+                    />
+                )}
+
                 {/* ── Empty state ── */}
-                {!loading && requests.length === 0 && (
+                {!loading && !fetchError && requests.length === 0 && (
                     <EmptyState
                         icon={Inbox}
                         title="لا توجد طلبات سابقة"

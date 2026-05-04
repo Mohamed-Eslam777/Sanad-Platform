@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const { User, BeneficiaryProfile, VolunteerProfile, Request, SOSAlert, Message } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
-const { getIo } = require('../socketHandler');
+const { notifyUser } = require('../ioInstance');
 
 /**
  * @desc  List all users with optional name/role/status filters + search
@@ -212,16 +212,15 @@ const reviewIdentityVerification = async (req, res) => {
         const newStatus = action === 'accept' ? 'verified' : 'rejected';
         await user.update({ verification_status: newStatus });
 
-        // Notify user via Socket.io
-        const io = getIo();
-        if (io) {
-            io.to(user.id.toString()).emit('new_notification', {
-                title: 'تحديث حالة التوثيق',
-                message: action === 'accept' ? 'تهانينا! تم توثيق حسابك بنجاح.' : 'نأسف، تم رفض طلب توثيق حسابك. يرجى المحاولة مرة أخرى.',
-                type: action === 'accept' ? 'success' : 'error',
-                link: '/profile'
-            });
-        }
+        // Notify user via Socket.io wrapper (handles the correct room naming and missing IO logic)
+        notifyUser(user.id, {
+            type: action === 'accept' ? 'kyc_accepted' : 'kyc_rejected',
+            title: 'تحديث حالة التوثيق',
+            body: action === 'accept'
+                ? 'تهانينا! تم توثيق حسابك بنجاح.'
+                : 'نأسف، تم رفض طلب توثيق حسابك. يرجى المحاولة مرة أخرى.',
+            link: '/profile',
+        });
 
         return sendSuccess(res, 200, `User identity ${newStatus}.`, {
             id: user.id,
@@ -246,7 +245,7 @@ const getAllRequestsAdmin = async (req, res) => {
             where.status = status;
         }
 
-        if (type && ['medical', 'financial', 'logistical'].includes(type)) {
+        if (type && ['transportation', 'reading', 'errand', 'other'].includes(type)) {
             where.type = type;
         }
 

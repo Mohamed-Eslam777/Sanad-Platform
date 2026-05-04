@@ -23,9 +23,11 @@ function useCountUp(target, duration = 1200, shouldRun = false) {
         if (!shouldRun) return;
 
         const num = typeof target === 'number' ? target : parseFloat(target);
-        if (isNaN(num) || num === 0) { setCount(target); return; }
+        if (isNaN(num) || num === 0) {
+            const frameId = requestAnimationFrame(() => setCount(target));
+            return () => cancelAnimationFrame(frameId);
+        }
 
-        let start = 0;
         const startTime = performance.now();
         const isFloat = String(target).includes('.');
 
