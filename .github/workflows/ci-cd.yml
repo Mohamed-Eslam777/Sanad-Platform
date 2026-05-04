@@ -82,7 +82,7 @@ jobs:
           DB_NAME: sanad_db
           JWT_SECRET: super_secret_test_key
           ALLOWED_ORIGIN: http://localhost:5173
-        run: npm test
+        run: npm test -- --runInBand
 
   # ── 3. Docker Image Build (Dry Run) ────────────────────────────────────────
   docker-dry-run:
