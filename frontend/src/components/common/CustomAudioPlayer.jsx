@@ -17,9 +17,10 @@ export default function CustomAudioPlayer({ src }) {
 
     // Safely unmount/pause without throwing uncaught promises
     useEffect(() => {
+        const audioEl = audioRef.current;
         return () => {
-            if (audioRef.current && isPlaying) {
-                audioRef.current.pause();
+            if (audioEl && isPlaying) {
+                audioEl.pause();
             }
         };
     }, [isPlaying]);

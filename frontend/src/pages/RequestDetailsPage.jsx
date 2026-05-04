@@ -3,7 +3,7 @@
  * RequestDetailsPage — Premium Dark Glassmorphism
  * ═══════════════════════════════════════════════════════════════════════════════
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { requestService } from '../services/requestService';
@@ -40,6 +40,9 @@ const itemVariants = {
     visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
 };
 
+// Default fallback coordinates (Cairo)
+const FALLBACK_LOCATION = [30.0444, 31.2357];
+
 export default function RequestDetailsPage() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -66,9 +69,7 @@ export default function RequestDetailsPage() {
     const [beneficiaryLocation, setBeneficiaryLocation] = useState(null);
     const [usingFallback, setUsingFallback] = useState(false);
 
-    useEffect(() => { loadRequest(); }, [id]);
-
-    const loadRequest = async () => {
+    const loadRequest = useCallback(async () => {
         try {
             setLoading(true);
             const res = await requestService.getRequestById(id);
@@ -78,7 +79,9 @@ export default function RequestDetailsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
+
+    useEffect(() => { loadRequest(); }, [loadRequest]);
 
     // ── Volunteer: simple "request completion" ────────────────────────────
     const handleVolunteerComplete = async () => {
@@ -159,8 +162,7 @@ export default function RequestDetailsPage() {
         }
     };
 
-    // Default fallback coordinates (Cairo)
-    const FALLBACK_LOCATION = [30.0444, 31.2357];
+
 
     // ── Live Tracking Effect ─────────────────────────────────────────────────
     useEffect(() => {

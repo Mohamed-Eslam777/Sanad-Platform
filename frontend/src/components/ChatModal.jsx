@@ -308,7 +308,7 @@ function ChatModal({ isOpen, onClose, requestId, requestStatus, otherPartyRole, 
             socket.off('error_message', onError);
             clearTimeout(typingTimeoutRef.current);
         };
-    }, [isOpen, requestId, fetchHistory, currentUserId, markRead]);
+    }, [isOpen, requestId, fetchHistory, currentUserId, markRead, manageRoomState]);
 
     // After history loads, mark any unread messages from the other party as read
     useEffect(() => {
