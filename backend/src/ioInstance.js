@@ -8,8 +8,8 @@
  *   setIO(io);  // call once after creating the io server
  *
  * Usage in any controller:
- *   const { getIO } = require('../ioInstance');
- *   getIO()?.to(`user_${userId}`).emit('new_notification', payload);
+ *   const { notifyUser } = require('../ioInstance');
+ *   notifyUser(userId, { type, title, body, link, requestId });
  */
 
 'use strict';
@@ -28,18 +28,58 @@ function getIO() {
 }
 
 /**
- * Send a notification to a specific user's private room.
- * @param {number} userId - The target user's ID
- * @param {object} payload - { type, title, body, link?, requestId? }
+ * Persist + broadcast a notification to a specific user's private Socket.io room.
+ *
+ * Strategy:
+ *  1. Normalise the payload (unify 'body' / 'message' keys, resolve requestId → request_id).
+ *  2. Save to DB.  If DB fails, log the error but DO NOT abort — always try to emit.
+ *  3. Emit the DB record (real auto-increment id) when saved, or an ephemeral object as fallback.
+ *
+ * @param {number} userId  - Recipient user ID
+ * @param {object} payload - { type?, title, body?, message?, link?, requestId? }
  */
-function notifyUser(userId, payload) {
+async function notifyUser(userId, payload) {
+    // ── 1. Normalise payload ──────────────────────────────────────────────────
+    const normalised = {
+        type:       payload.type      || null,
+        title:      payload.title     || '',
+        body:       payload.body      || payload.message || '',
+        link:       payload.link      || null,
+        request_id: payload.requestId || null,
+    };
+
+    // ── 2. Persist to DB (lazy-require to avoid circular deps at load time) ──
+    let record = null;
+    try {
+        const { Notification } = require('./models');
+        record = await Notification.create({ user_id: userId, ...normalised });
+    } catch (dbErr) {
+        console.error('[notifyUser] DB save failed — falling back to ephemeral emit:', dbErr.message);
+    }
+
+    // ── 3. Broadcast via Socket.io ────────────────────────────────────────────
     if (!_io) return;
-    _io.to(`user_${userId}`).emit('new_notification', {
-        id: Date.now(),
-        ...payload,
-        read: false,
-        timestamp: new Date().toISOString(),
-    });
+
+    const emitPayload = record
+        ? {
+              id:        record.id,           // real DB integer id
+              type:      record.type,
+              title:     record.title,
+              body:      record.body,
+              link:      record.link,
+              requestId: record.request_id,
+              is_read:   false,
+              timestamp: record.created_at,
+          }
+        : {
+              id:        Date.now(),           // fallback ephemeral id
+              ...normalised,
+              requestId: normalised.request_id,
+              is_read:   false,
+              timestamp: new Date().toISOString(),
+          };
+
+    _io.to(`user_${userId}`).emit('new_notification', emitPayload);
 }
 
 module.exports = { setIO, getIO, notifyUser };

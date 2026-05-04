@@ -32,4 +32,9 @@ const createRequestValidators = [
     body('location_lng').isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude.'),
 ];
 
-module.exports = { validate, registerValidators, loginValidators, createRequestValidators };
+const updateLocationValidators = [
+    body('latitude').isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude.'),
+    body('longitude').isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude.'),
+];
+
+module.exports = { validate, registerValidators, loginValidators, createRequestValidators, updateLocationValidators };

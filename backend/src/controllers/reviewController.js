@@ -26,13 +26,7 @@ const createReview = async (req, res) => {
             comment,
         });
 
-        // Recalculate the volunteer's average rating
-        const allReviews = await Review.findAll({ where: { reviewed_id: request.volunteer_id } });
-        const avg = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
-        await VolunteerProfile.update(
-            { average_rating: avg.toFixed(2), total_reviews: allReviews.length },
-            { where: { user_id: request.volunteer_id } }
-        );
+        // Rating recalculation is handled automatically by Review.afterSave hook
 
         return sendSuccess(res, 201, 'Review submitted successfully.', review);
     } catch (error) {

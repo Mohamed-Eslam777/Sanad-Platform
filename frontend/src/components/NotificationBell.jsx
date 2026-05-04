@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, MessageCircle, CheckCircle, Package, CheckCheck, Check } from 'lucide-react';
+import { Bell, MessageCircle, CheckCircle, Package, CheckCheck, Check, Play, ClipboardCheck, ShieldCheck, ShieldX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /* ─── Icon by notification type ─────────────────────────────── */
 const TYPE_ICONS = {
-    request_accepted: { icon: CheckCircle, bg: 'bg-emerald-500/20', color: 'text-emerald-400', border: 'border-emerald-500/30' },
-    request_completed: { icon: Package, bg: 'bg-blue-500/20', color: 'text-blue-400', border: 'border-blue-500/30' },
-    new_message: { icon: MessageCircle, bg: 'bg-purple-500/20', color: 'text-purple-400', border: 'border-purple-500/30' },
+    request_accepted:    { icon: CheckCircle,    bg: 'bg-emerald-500/20', color: 'text-emerald-400', border: 'border-emerald-500/30' },
+    request_started:     { icon: Play,           bg: 'bg-amber-500/20',   color: 'text-amber-400',   border: 'border-amber-500/30' },
+    completion_requested:{ icon: ClipboardCheck,  bg: 'bg-orange-500/20',  color: 'text-orange-400',  border: 'border-orange-500/30' },
+    request_completed:   { icon: Package,         bg: 'bg-blue-500/20',    color: 'text-blue-400',    border: 'border-blue-500/30' },
+    new_message:         { icon: MessageCircle,   bg: 'bg-purple-500/20',  color: 'text-purple-400',  border: 'border-purple-500/30' },
+    kyc_accepted:        { icon: ShieldCheck,     bg: 'bg-teal-500/20',    color: 'text-teal-400',    border: 'border-teal-500/30' },
+    kyc_rejected:        { icon: ShieldX,         bg: 'bg-red-500/20',     color: 'text-red-400',     border: 'border-red-500/30' },
 };
 
 function NotifIcon({ type }) {

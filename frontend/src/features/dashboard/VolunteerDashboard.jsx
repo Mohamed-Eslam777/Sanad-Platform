@@ -24,8 +24,11 @@ import {
     MapPinOff,
     Loader2,
     Inbox,
+    AlertCircle,
 } from 'lucide-react';
 import { requestService } from '../../services/requestService';
+import api from '../../services/api';
+import { getSocket } from '../../services/socketService';
 
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -48,15 +51,51 @@ export default function VolunteerDashboard({ user }) {
     const [loadingAccepted, setLoadAcc] = useState(true);
     const [processingId, setProcessingId] = useState(null);
     const [acceptError, setAcceptError] = useState(null);
+    const [fetchNearbyError, setFetchNearbyError] = useState(null);
+    const [fetchAcceptedError, setFetchAcceptedError] = useState(null);
+
+    const [profileStats, setProfileStats] = useState({
+        completed: user?.profile?.completed_requests || 0,
+        average_rating: user?.profile?.average_rating || 0,
+    });
 
     useEffect(() => {
         fetchNearby();
         fetchAccepted();
+        fetchProfileStats();
+
+        const socket = getSocket();
+        if (!socket) return;
+        
+        const handleNewRequest = () => fetchNearby();
+        socket.on('new_request_available', handleNewRequest);
+        
+        return () => {
+            socket.off('new_request_available', handleNewRequest);
+        };
     }, []);
+
+    const fetchProfileStats = async () => {
+        try {
+            // Fetch fresh from backend to override localStorage User cache
+            const res = await api.get('/users/me');
+
+            if (res.data?.data?.profile) {
+                const p = res.data.data.profile;
+                setProfileStats({
+                    completed: p.completed_requests || 0,
+                    average_rating: p.average_rating || 0,
+                });
+            }
+        } catch (e) { 
+            console.error("DASHBOARD FETCH ERROR:", e);
+        }
+    };
 
     const fetchNearby = async () => {
         try {
             setLoadNearby(true);
+            setFetchNearbyError(null);
 
             // Try to use browser geolocation to enable real radius-based matching.
             const getPosition = () =>
@@ -76,6 +115,10 @@ export default function VolunteerDashboard({ user }) {
             try {
                 const pos = await getPosition();
                 const { latitude, longitude } = pos.coords;
+
+                // Fire-and-forget sync to backend to stay SOS-discoverable
+                api.patch('/users/location', { latitude, longitude }).catch(() => {});
+
                 res = await requestService.getNearbyRequests(latitude, longitude, 5);
             } catch {
                 // If user denies or geolocation fails, fall back to server-side default
@@ -84,7 +127,7 @@ export default function VolunteerDashboard({ user }) {
 
             setNearby(res.data || []);
         } catch {
-            /* silence */
+            setFetchNearbyError('فشل في جلب الطلبات القريبة. يرجى التحقق من الاتصال.');
         } finally {
             setLoadNearby(false);
         }
@@ -93,10 +136,11 @@ export default function VolunteerDashboard({ user }) {
     const fetchAccepted = async () => {
         try {
             setLoadAcc(true);
+            setFetchAcceptedError(null);
             const res = await requestService.getMyAcceptedRequests();
             setAccepted(res.data || []);
         } catch {
-            /* silence */
+            setFetchAcceptedError('فشل في جلب المهام الحالية. يرجى التحقق من الاتصال.');
         } finally {
             setLoadAcc(false);
         }
@@ -120,8 +164,11 @@ export default function VolunteerDashboard({ user }) {
         }
     };
 
-    const ratingDisplay = user?.profile?.average_rating
-        ? `${parseFloat(user.profile.average_rating).toFixed(1)} / 5`
+
+
+    const finalRating = profileStats?.average_rating || 0;
+    const ratingDisplay = Number(finalRating) > 0
+        ? `${Number(finalRating).toFixed(1)} / 5`
         : 'جديد';
 
     return (
@@ -157,7 +204,7 @@ export default function VolunteerDashboard({ user }) {
                 />
                 <StatCard
                     title="مهام منجزة"
-                    value={user?.profile?.completed_requests || 0}
+                    value={profileStats.completed}
                     icon={<CheckCircle />}
                     color="text-success-400"
                     bg="bg-success-500/15"
@@ -197,8 +244,22 @@ export default function VolunteerDashboard({ user }) {
                         </div>
                     )}
 
+                    {/* Error */}
+                    {!loadingNearby && fetchNearbyError && (
+                        <EmptyState
+                            icon={AlertCircle}
+                            title="عذراً، حدث خطأ"
+                            subtitle={fetchNearbyError}
+                            action={
+                                <Button variant="outline" onClick={fetchNearby} size="sm">
+                                    المحاولة مرة أخرى
+                                </Button>
+                            }
+                        />
+                    )}
+
                     {/* Empty */}
-                    {!loadingNearby && nearbyRequests.length === 0 && (
+                    {!loadingNearby && !fetchNearbyError && nearbyRequests.length === 0 && (
                         <EmptyState
                             icon={MapPinOff}
                             title="لا توجد طلبات متاحة"
@@ -259,8 +320,22 @@ export default function VolunteerDashboard({ user }) {
                         </div>
                     )}
 
+                    {/* Error */}
+                    {!loadingAccepted && fetchAcceptedError && (
+                        <EmptyState
+                            icon={AlertCircle}
+                            title="عذراً، حدث خطأ"
+                            subtitle={fetchAcceptedError}
+                            action={
+                                <Button variant="outline" onClick={fetchAccepted} size="sm">
+                                    المحاولة مرة أخرى
+                                </Button>
+                            }
+                        />
+                    )}
+
                     {/* Empty */}
-                    {!loadingAccepted && acceptedRequests.length === 0 && (
+                    {!loadingAccepted && !fetchAcceptedError && acceptedRequests.length === 0 && (
                         <EmptyState
                             icon={Inbox}
                             title="لا توجد مهمات نشطة"

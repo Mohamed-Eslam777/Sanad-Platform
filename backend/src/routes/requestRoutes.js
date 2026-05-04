@@ -10,10 +10,12 @@ const {
     getNearbyRequests,
     getRequestById,
     acceptRequest,
+    startRequest,
     requestCompletion,
     confirmCompletion,
     getMyAcceptedRequests,
     cancelRequest,
+    abortRequest,
 } = require('../controllers/requestController');
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -47,13 +49,19 @@ router.get('/:id', protect, getRequestById);
 // PATCH /api/requests/:id/accept   → volunteer accepts a pending request
 router.patch('/:id/accept', protect, authorize('volunteer'), acceptRequest);
 
+// PATCH /api/requests/:id/start    → volunteer starts an accepted request
+router.patch('/:id/start', protect, authorize('volunteer'), startRequest);
+
 // Volunteer marks request as 'completion_requested'
 router.patch('/:id/request-completion', protect, authorize('volunteer', 'admin'), requestCompletion);
 
 // Beneficiary confirms completion and leaves a rating/review
 router.post('/:id/confirm-completion', protect, authorize('beneficiary', 'admin'), confirmCompletion);
 
-// PATCH /api/requests/:id/cancel   → beneficiary cancels a pending request
+// PATCH /api/requests/:id/cancel   → beneficiary cancels an active request
 router.patch('/:id/cancel', protect, authorize('beneficiary'), cancelRequest);
+
+// PATCH /api/requests/:id/abort    → volunteer aborts an accepted/in-progress request
+router.patch('/:id/abort', protect, authorize('volunteer'), abortRequest);
 
 module.exports = router;

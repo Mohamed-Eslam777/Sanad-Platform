@@ -2,10 +2,15 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
 const routes = require('./src/routes');
 const errorHandler = require('./src/middleware/errorHandler');
+const logger = require('./src/utils/logger');
 
 const app = express();
+
+// ── 0. Logging (Morgan + Winston) ──────────────────────────────────────────────
+app.use(morgan('combined', { stream: logger.stream }));
 
 // ── 1. Security Headers (helmet) ───────────────────────────────────────────────
 // Sets X-Frame-Options, Content-Security-Policy, X-Content-Type-Options, etc.
@@ -13,18 +18,27 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// ── 2. CORS — restricted to the frontend origin ────────────────────────────────
+// ── 2. CORS — restricted to allowed origins ─────────────────────────────────
 // Set ALLOWED_ORIGIN in .env (e.g. https://sanad.app) for production.
-// Falls back to localhost:5173 for development.
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:5173';
+const allowedOrigins = [
+    process.env.ALLOWED_ORIGIN || 'http://localhost:5173',
+    // Development origins
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+];
 app.use(cors({
     origin: (origin, callback) => {
         // Allow requests with no origin (e.g. curl, Postman) in development
-        if (!origin || process.env.NODE_ENV !== 'production') {
+        if (!origin && process.env.NODE_ENV !== 'production') {
             return callback(null, true);
         }
-        if (origin === allowedOrigin) {
-            return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, origin);
+        }
+        if (process.env.NODE_ENV !== 'production') {
+            return callback(null, origin);
         }
         return callback(new Error(`CORS policy: origin "${origin}" is not allowed.`));
     },

@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { userService } from '../services/userService';
+import api from '../services/api';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import InputField from '../components/common/InputField';
@@ -70,7 +71,7 @@ export default function ProfilePage() {
                 bio: data.profile?.bio || '',
                 skills: data.profile?.skills || ''
             });
-        } catch (err) {
+        } catch {
             setError('فشل في تحميل بيانات الملف الشخصي.');
         } finally {
             setLoading(false);
@@ -90,7 +91,7 @@ export default function ProfilePage() {
         try {
             await userService.updateProfile(formData);
             setMessage('تم حفظ الملف الشخصي بنجاح!');
-        } catch (err) {
+        } catch {
             setError('حدث خطأ أثناء حفظ التعديلات.');
         } finally {
             setSaving(false);

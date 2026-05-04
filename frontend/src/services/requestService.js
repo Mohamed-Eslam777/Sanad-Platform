@@ -50,6 +50,12 @@ export const requestService = {
         return response.data;
     },
 
+    // بدء المهمة (خاص بالمتطوع)
+    startRequest: async (id) => {
+        const response = await api.patch(`/requests/${id}/start`);
+        return response.data;
+    },
+
     // requestCompletion: requests for the current volunteer asking for finishing up
     requestCompletion: async (reqId) => {
         const response = await api.patch(`/requests/${reqId}/request-completion`);
@@ -67,6 +73,12 @@ export const requestService = {
         const response = await api.patch(`/requests/${id}/cancel`);
         return response.data;
     },
+
+    // انسحاب من طلب (خاص بالمتطوع)
+    abortRequest: async (id) => {
+        const response = await api.patch(`/requests/${id}/abort`);
+        return response.data;
+    },
 };
 
 // Also export them individually so destructuring works in other files:
@@ -78,9 +90,11 @@ export const {
     getAllRequests,
     getRequestById,
     acceptRequest,
+    startRequest,
     requestCompletion,
     confirmCompletion,
-    cancelRequest
+    cancelRequest,
+    abortRequest
 } = requestService;
 
 export default requestService;

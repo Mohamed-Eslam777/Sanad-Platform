@@ -49,10 +49,14 @@ const getMessages = async (req, res) => {
         const request = await Request.findByPk(req.params.requestId);
         if (!request) return sendError(res, 404, 'Request not found.');
 
-        // Ensure only the beneficiary or volunteer involved can read messages
+        // Ensure only the beneficiary, volunteer, or admin can read messages
         const isParticipant =
             req.user.id === request.beneficiary_id || req.user.id === request.volunteer_id;
-        if (!isParticipant) return sendError(res, 403, 'Not authorized to view these messages.');
+        const isAdmin = req.user.role === 'admin';
+
+        if (!isParticipant && !isAdmin) {
+            return sendError(res, 403, 'Not authorized to view these messages.');
+        }
 
         const messages = await Message.findAll({
             where: { request_id: req.params.requestId },
@@ -79,8 +83,8 @@ const sendMessage = async (req, res) => {
             req.user.id === request.beneficiary_id || req.user.id === request.volunteer_id;
         if (!isParticipant) return sendError(res, 403, 'Not authorized to send messages here.');
 
-        if (!['accepted', 'in_progress'].includes(request.status)) {
-            return sendError(res, 400, 'Chat is only open for accepted or in-progress requests.');
+        if (!['accepted', 'in_progress', 'completion_requested'].includes(request.status)) {
+            return sendError(res, 400, 'Chat is only open for accepted, in-progress, or completion-requested requests.');
         }
 
         const message = await Message.create({

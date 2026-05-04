@@ -1,8 +1,7 @@
-const { sequelize, Request, User, Review, VolunteerProfile } = require('../models');
-const { QueryTypes } = require('sequelize');
-const { haversineSQLString } = require('../services/geoService');
+const { sequelize, Request, User, Review } = require('../models');
+const { QueryTypes, Op } = require('sequelize');
 const { sendSuccess, sendError } = require('../utils/responseHelper');
-const { notifyUser } = require('../ioInstance');
+const { notifyUser, getIO } = require('../ioInstance');
 
 /**
  * @desc    Create a new assistance request (beneficiary only)
@@ -23,6 +22,14 @@ const createRequest = async (req, res) => {
             price,
             scheduled_time,
         });
+
+        const io = getIO();
+        if (io) {
+            io.to('volunteers').emit('new_request_available', {
+                message: 'A new request is available near you.',
+                request_id: request.id,
+            });
+        }
 
         return sendSuccess(res, 201, 'Request created successfully.', request);
     } catch (error) {
@@ -110,7 +117,13 @@ const getNearbyRequests = async (req, res) => {
         }
 
         // Geo-filtered query using Haversine distance in SQL
-        const distanceExpr = haversineSQLString();
+        const distanceExpr = `
+            6371 * acos(
+                cos(radians(:lat)) * cos(radians(r.location_lat)) *
+                cos(radians(r.location_lng) - radians(:lng)) +
+                sin(radians(:lat)) * sin(radians(r.location_lat))
+            )
+        `;
         const sql = `
             SELECT
                 r.*,
@@ -184,6 +197,15 @@ const getRequestById = async (req, res) => {
             ],
         });
         if (!request) return sendError(res, 404, 'Request not found.');
+
+        const isOwner = request.beneficiary_id === req.user.id;
+        const isAssignedVolunteer = request.volunteer_id === req.user.id;
+        const isAdmin = req.user.role === 'admin';
+
+        if (!isOwner && !isAssignedVolunteer && !isAdmin) {
+            return sendError(res, 403, 'Not authorized to view this request.');
+        }
+
         return sendSuccess(res, 200, 'Request details.', request);
     } catch (error) {
         return sendError(res, 500, error);
@@ -213,6 +235,42 @@ const acceptRequest = async (req, res) => {
         });
 
         return sendSuccess(res, 200, 'Request accepted. Chat is now open.', request);
+    } catch (error) {
+        return sendError(res, 500, error);
+    }
+};
+
+/**
+ * @desc    Volunteer starts the task (updates status from accepted to in_progress)
+ * @route   PATCH /api/requests/:id/start
+ * @access  Private (Volunteer)
+ */
+const startRequest = async (req, res) => {
+    try {
+        const request = await Request.findByPk(req.params.id);
+        if (!request) return sendError(res, 404, 'Request not found.');
+
+        // Only the assigned volunteer can start it
+        if (req.user.id !== request.volunteer_id) {
+            return sendError(res, 403, 'Not authorized. Only the assigned volunteer can start this request.');
+        }
+
+        if (request.status !== 'accepted') {
+            return sendError(res, 400, 'Request must be accepted before it can be started.');
+        }
+
+        await request.update({ status: 'in_progress' });
+
+        // 🔔 Notify Beneficiary
+        notifyUser(request.beneficiary_id, {
+            type: 'request_started',
+            title: 'بدء التنفيذ! 🚀',
+            body: `لقد بدأ المتطوع ${req.user.full_name} في تنفيذ طلبك (قيد التنفيذ الآن).`,
+            requestId: request.id,
+            link: `/requests/${request.id}`,
+        });
+
+        return sendSuccess(res, 200, 'Request status updated to in_progress.', request);
     } catch (error) {
         return sendError(res, 500, error);
     }
@@ -298,25 +356,8 @@ const confirmCompletion = async (req, res) => {
             comment
         }, { transaction: t });
 
-        // 3. Update Volunteer's Average Rating
-        // Calculate the new average securely
-        const allReviews = await Review.findAll({
-            where: { reviewed_id: request.volunteer_id },
-            transaction: t
-        });
-        
-        const totalRating = allReviews.reduce((sum, rev) => sum + rev.rating, 0);
-        const newAverage = allReviews.length > 0 ? (totalRating / allReviews.length).toFixed(1) : rating;
-
-        // Update VolunteerProfile
-        const volunteerProfile = await VolunteerProfile.findOne({
-            where: { user_id: request.volunteer_id },
-            transaction: t
-        });
-
-        if (volunteerProfile) {
-            await volunteerProfile.update({ rating: parseFloat(newAverage) }, { transaction: t });
-        }
+        // 3. Rating update is handled automatically by Review.afterSave hook
+        //    which recalculates average_rating and total_reviews in VolunteerProfile.
 
         await t.commit();
 
@@ -346,7 +387,9 @@ const getMyAcceptedRequests = async (req, res) => {
         const requests = await Request.findAll({
             where: {
                 volunteer_id: req.user.id,
-                status: ['accepted', 'in_progress'],
+                status: {
+                    [Op.in]: ['accepted', 'in_progress'],
+                },
             },
             include: [
                 { model: User, as: 'beneficiary', attributes: ['id', 'full_name', 'profile_picture'] },
@@ -360,13 +403,9 @@ const getMyAcceptedRequests = async (req, res) => {
 };
 
 /**
- * @desc    Beneficiary cancels a pending request
+ * @desc    Beneficiary cancels an active request
  * @route   PATCH /api/requests/:id/cancel
  * @access  Private (beneficiary)
- *
- * Rules:
- *  - Only the beneficiary who created the request can cancel it.
- *  - Can only cancel while status is 'pending' (before a volunteer accepts).
  */
 const cancelRequest = async (req, res) => {
     try {
@@ -376,15 +415,65 @@ const cancelRequest = async (req, res) => {
         if (request.beneficiary_id !== req.user.id) {
             return sendError(res, 403, 'You are not authorised to cancel this request.');
         }
-        if (request.status !== 'pending') {
-            return sendError(res, 400, `Cannot cancel a request with status "${request.status}". Only pending requests can be cancelled.`);
+        
+        const allowedStatuses = ['pending', 'accepted', 'in_progress'];
+        if (!allowedStatuses.includes(request.status)) {
+            return sendError(res, 400, `Cannot cancel a request with status "${request.status}". Only active requests can be cancelled.`);
         }
 
         await request.update({ status: 'cancelled' });
+
+        // 🔔 Notify Volunteer if assigned
+        if (request.volunteer_id) {
+            notifyUser(request.volunteer_id, {
+                type: 'request_cancelled',
+                title: 'تم إلغاء الطلب ❌',
+                body: `قام المستفيد بإلغاء الطلب الذي قمت بقبوله.`,
+                requestId: request.id,
+                link: `/requests/${request.id}`,
+            });
+        }
+
         return sendSuccess(res, 200, 'Request cancelled successfully.', request);
     } catch (error) {
         return sendError(res, 500, error);
     }
 };
 
-module.exports = { createRequest, getMyRequests, getRequests, getNearbyRequests, getRequestById, acceptRequest, requestCompletion, confirmCompletion, getMyAcceptedRequests, cancelRequest };
+/**
+ * @desc    Volunteer aborts an accepted/in_progress request
+ * @route   PATCH /api/requests/:id/abort
+ * @access  Private (volunteer)
+ */
+const abortRequest = async (req, res) => {
+    try {
+        const request = await Request.findByPk(req.params.id);
+        if (!request) return sendError(res, 404, 'Request not found.');
+
+        if (request.volunteer_id !== req.user.id) {
+            return sendError(res, 403, 'You are not authorised to abort this request.');
+        }
+
+        const allowedStatuses = ['accepted', 'in_progress'];
+        if (!allowedStatuses.includes(request.status)) {
+            return sendError(res, 400, `Cannot abort a request with status "${request.status}".`);
+        }
+
+        await request.update({ status: 'pending', volunteer_id: null });
+
+        // 🔔 Notify Beneficiary
+        notifyUser(request.beneficiary_id, {
+            type: 'request_aborted',
+            title: 'انسحب المتطوع',
+            body: 'انسحب المتطوع من الطلب، وتمت إعادته لقائمة الانتظار.',
+            requestId: request.id,
+            link: `/requests/${request.id}`,
+        });
+
+        return sendSuccess(res, 200, 'Request aborted successfully. It is now pending another volunteer.', request);
+    } catch (error) {
+        return sendError(res, 500, error);
+    }
+};
+
+module.exports = { createRequest, getMyRequests, getRequests, getNearbyRequests, getRequestById, acceptRequest, startRequest, requestCompletion, confirmCompletion, getMyAcceptedRequests, cancelRequest, abortRequest };

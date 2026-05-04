@@ -1,10 +1,16 @@
+const logger = require('../utils/logger');
+
 /**
  * Global error-handling middleware.
  * Must be registered LAST in app.js (after all routes).
  * Returns a standardized JSON error response for all unhandled errors.
  */
 const errorHandler = (err, req, res, next) => {
-    console.error('❌ Unhandled Error:', err);
+    logger.error(`❌ Unhandled Error: ${err.message}`, { 
+        err, 
+        path: req?.originalUrl,
+        method: req?.method 
+    });
 
     // Sequelize validation errors
     if (err.name === 'SequelizeValidationError' || err.name === 'SequelizeUniqueConstraintError') {

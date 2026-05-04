@@ -40,6 +40,10 @@ const VolunteerProfile = sequelize.define(
         average_rating: {
             type: DataTypes.DECIMAL(3, 2),
             defaultValue: 0.0,
+            get() {
+                const value = this.getDataValue('average_rating');
+                return value === null ? null : parseFloat(value);
+            }
         },
         total_reviews: {
             type: DataTypes.INTEGER.UNSIGNED,
